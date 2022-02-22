@@ -43,7 +43,7 @@ public class TestElement {
         return Objects.hash(id);
     }
 
-    public static TestElement fromByte(byte[] bytes) {
+    public static TestElement fromByte(Integer ver, byte[] bytes) {
         try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes); DataInputStream dis = new DataInputStream(bais)) {
             return new TestElement(dis.readLong(), dis.readInt(), dis.readInt(), dis.readLong());
         } catch (Exception e) {
@@ -51,7 +51,7 @@ public class TestElement {
         }
     }
 
-    public static byte[] toByte(TestElement obj) {
+    public static byte[] toByte(Integer ver, TestElement obj) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
             dos.writeLong(obj.id);
             dos.writeInt(obj.x);

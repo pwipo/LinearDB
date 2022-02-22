@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -35,10 +36,11 @@ public class DB<T> implements Closeable {
 
     private final File folder;
     private final String dbName;
+    private final int version;
     private RandomAccessFile rafIndex;
     private RandomAccessFile rafData;
-    private final Function<byte[], T> funcConverter;
-    private final Function<T, byte[]> funcReverseConverter;
+    private final BiFunction<Integer, byte[], T> funcConverter;
+    private final BiFunction<Integer, T, byte[]> funcReverseConverter;
     private final Function<T, Long> funcGetId;
     private final BiConsumer<T, Long> funcSetId;
     private final Function<T, Long> funcGetDate;
@@ -46,13 +48,13 @@ public class DB<T> implements Closeable {
 
     private final int indexFileElementLength;
     private final int countAdditionalBytesInIndex;
-    private final Function<byte[], List<Object>> funcIndexAdditionalDataConverter;
-    private final Function<List<Object>, byte[]> funcIndexAdditionalDataReverseConverter;
+    private final BiFunction<Integer, byte[], List<Object>> funcIndexAdditionalDataConverter;
+    private final BiFunction<Integer, List<Object>, byte[]> funcIndexAdditionalDataReverseConverter;
     private final Function<T, List<Object>> funcIndexGetAdditionalData;
 
     private Index index;
 
-    private int version;
+    private int currentVersion;
 
     private final File indexFile;
     private final File dataFile;
@@ -65,15 +67,15 @@ public class DB<T> implements Closeable {
             File folder
             , String dbName
             , int version
-            , Function<byte[], T> funcConverter
-            , Function<T, byte[]> funcReverseConverter
+            , BiFunction<Integer, byte[], T> funcConverter
+            , BiFunction<Integer, T, byte[]> funcReverseConverter
             , Function<T, Long> funcGetId
             , BiConsumer<T, Long> funcSetId
             , Function<T, Long> funcGetDate
             , BiConsumer<T, Long> funcSetDate
             , int countAdditionalBytesInIndex
-            , Function<byte[], List<Object>> funcIndexAdditionalDataConverter
-            , Function<List<Object>, byte[]> funcIndexAdditionalDataReverseConverter
+            , BiFunction<Integer, byte[], List<Object>> funcIndexAdditionalDataConverter
+            , BiFunction<Integer, List<Object>, byte[]> funcIndexAdditionalDataReverseConverter
             , Function<T, List<Object>> funcIndexGetAdditionalData
     ) {
         Objects.requireNonNull(folder);
@@ -94,6 +96,7 @@ public class DB<T> implements Closeable {
         this.folder = folder;
         this.dbName = dbName;
         this.version = version;
+        this.currentVersion = version;
         folder.mkdirs();
         this.index = null;
         this.rafIndex = null;
@@ -148,7 +151,7 @@ public class DB<T> implements Closeable {
         if (length > 0) {
             long lengthData = rafData.length();
             rafIndex.seek(0);
-            version = rafIndex.readInt();
+            currentVersion = rafIndex.readInt();
             // long minId = rafIndex.readLong();
             // long minDate = rafIndex.readLong();
             // long maxId = rafIndex.readLong();
@@ -169,7 +172,7 @@ public class DB<T> implements Closeable {
                 if (countAdditionalBytesInIndex > 0 && funcIndexAdditionalDataConverter != null) {
                     byte[] additionalBytes = new byte[countAdditionalBytesInIndex];
                     rafIndex.readFully(additionalBytes);
-                    additionalData = funcIndexAdditionalDataConverter.apply(additionalBytes);
+                    additionalData = funcIndexAdditionalDataConverter.apply(getCurrentVersion(), additionalBytes);
                 }
                 sizes.add(
                         new IndexElement(
@@ -213,6 +216,10 @@ public class DB<T> implements Closeable {
 
     public int getVersion() {
         return version;
+    }
+
+    public int getCurrentVersion() {
+        return currentVersion;
     }
 
     public File getFolder() {
@@ -491,7 +498,7 @@ public class DB<T> implements Closeable {
             int b = rafData.read(data);
             if (b != data.length)
                 throw new Exception("wrong element size. index damaged.");
-            return funcConverter.apply(data);
+            return funcConverter.apply(getCurrentVersion(), data);
         } catch (Exception ex) {
             throw new RuntimeException("error", ex);
         }
@@ -503,7 +510,7 @@ public class DB<T> implements Closeable {
         try {
             byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
             System.arraycopy(dataStorage, position + DATA_FILE_ELEMENT_HEADER_LENGTH, data, 0, data.length);
-            return funcConverter.apply(data);
+            return funcConverter.apply(getCurrentVersion(), data);
         } catch (Exception ex) {
             throw new RuntimeException("error", ex);
         }
@@ -546,10 +553,11 @@ public class DB<T> implements Closeable {
 
     private Index initNewDB(RandomAccessFile rafIndex, RandomAccessFile rafData) throws IOException {
         rafIndex.seek(0);
-        rafIndex.writeInt(version);
+        rafIndex.writeInt(getVersion());
         rafIndex.setLength(INDEX_FILE_HEADER_LENGTH);
         rafData.seek(0);
         rafData.setLength(0);
+        currentVersion = getVersion();
         return new Index(null);
     }
 
@@ -644,7 +652,7 @@ public class DB<T> implements Closeable {
                 elementDate = date;
                 funcSetDate.accept(data, elementDate);
             }
-            byte[] bytes = funcReverseConverter.apply(data);
+            byte[] bytes = funcReverseConverter.apply(getCurrentVersion(), data);
             DataElement<T> dataElement = new DataElement<>(
                     elementId,
                     elementDate,
@@ -657,7 +665,7 @@ public class DB<T> implements Closeable {
             List<Object> additionalData = null;
             if (funcIndexAdditionalDataReverseConverter != null && funcIndexGetAdditionalData != null) {
                 additionalData = funcIndexGetAdditionalData.apply(data);
-                rafIndex.write(funcIndexAdditionalDataReverseConverter.apply(additionalData));
+                rafIndex.write(funcIndexAdditionalDataReverseConverter.apply(getCurrentVersion(), additionalData));
             }
             rafData.writeInt(bytes.length);
             rafData.write(bytes);
