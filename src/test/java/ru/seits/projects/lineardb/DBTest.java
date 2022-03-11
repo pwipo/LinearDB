@@ -34,6 +34,11 @@ public class DBTest {
         db.open();
     }
 
+    @AfterAll
+    public static void onStop() throws IOException {
+        db.close();
+    }
+
     @Test
     @Order(0)
     public void version() throws IOException {
@@ -45,7 +50,7 @@ public class DBTest {
     public void saveAll() throws IOException {
         AtomicLong idGenerator = new AtomicLong(0);
         long currentTimeMillis = System.currentTimeMillis();
-        List<TestElement> elements = db.saveAll(List.of(
+        List<TestElement> elements = db.save(List.of(
                 new TestElement(idGenerator.incrementAndGet(), 1, 2, currentTimeMillis)
                 , new TestElement(idGenerator.incrementAndGet(), 3, 4, currentTimeMillis)
                 , new TestElement(null, 5, 6, currentTimeMillis)
@@ -57,7 +62,7 @@ public class DBTest {
     @Test
     @Order(2)
     public void add() throws IOException, InterruptedException {
-        List<TestElement> elements = db.add(List.of(
+        List<TestElement> elements = db.save(List.of(
                 new TestElement(null, 7, 8, null)
         ));
         Assertions.assertEquals(1, elements.size());
@@ -111,7 +116,7 @@ public class DBTest {
     @Order(8)
     public void delete() throws IOException {
         long maxId = db.getMaxId();
-        List<TestElement> elements = db.add(List.of(
+        List<TestElement> elements = db.save(List.of(
                 new TestElement(maxId + 1, 7, 8, System.currentTimeMillis())
         ));
         Assertions.assertEquals(1, elements.size());

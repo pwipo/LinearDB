@@ -6,7 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.Objects;
 
-public class TestElement {
+class TestElement {
     private Long id;
     private int x;
     private int y;

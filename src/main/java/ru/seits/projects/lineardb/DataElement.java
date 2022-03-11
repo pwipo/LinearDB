@@ -7,13 +7,13 @@ class DataElement<T> {
     private long date;
     private T data;
 
-    public DataElement(long id, long date, T data) {
+    DataElement(long id, long date, T data) {
         this.id = id;
         this.date = date;
         this.data = data;
     }
 
-    public long getId() {
+    long getId() {
         return id;
     }
 
@@ -21,7 +21,7 @@ class DataElement<T> {
         this.id = id;
     }
 
-    public long getDate() {
+    long getDate() {
         return date;
     }
 
@@ -29,7 +29,7 @@ class DataElement<T> {
         this.date = date;
     }
 
-    public T getData() {
+    T getData() {
         return data;
     }
 

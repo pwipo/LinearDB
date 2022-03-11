@@ -11,7 +11,7 @@ class Index {
 
     private LinkedList<IndexElement> elements;
 
-    public Index(List<IndexElement> elements) {
+    Index(List<IndexElement> elements) {
         this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
 
         this.minId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
@@ -21,56 +21,66 @@ class Index {
         this.elements.forEach(e -> updateIndexHeader(e.getId(), e.getDate()));
     }
 
-    public long getMinId() {
+    long getMinId() {
         return minId;
     }
 
-    public void setMinId(long minId) {
+    void setMinId(long minId) {
         this.minId = minId;
     }
 
-    public long getMinDate() {
+    long getMinDate() {
         return minDate;
     }
 
-    public void setMinDate(long minDate) {
+    void setMinDate(long minDate) {
         this.minDate = minDate;
     }
 
-    public long getMaxId() {
+    long getMaxId() {
         return maxId;
     }
 
-    public void setMaxId(long maxId) {
+    void setMaxId(long maxId) {
         this.maxId = maxId;
     }
 
-    public long getMaxDate() {
+    long getMaxDate() {
         return maxDate;
     }
 
-    public void setMaxDate(long maxDate) {
+    void setMaxDate(long maxDate) {
         this.maxDate = maxDate;
     }
 
-    public LinkedList<IndexElement> getElements() {
+    LinkedList<IndexElement> getElements() {
         return elements;
     }
 
-    public <T> void addElement(DataElement<T> element, List<Object> additionalData, int size) {
-        if (this.getElements().isEmpty()) {
-            this.minId = element.getId();
-            this.minDate = element.getDate();
-            this.maxId = element.getId();
-            this.maxDate = element.getDate();
+    <T> void saveElement(DataElement<T> element, List<Object> additionalData, int size, long position) {
+        IndexElement indexElement = this.getElements().stream().filter(e -> e.getId() == element.getId()).findAny().orElse(null);
+        if (indexElement == null) {
+            if (this.getElements().isEmpty()) {
+                this.minId = element.getId();
+                this.minDate = element.getDate();
+                this.maxId = element.getId();
+                this.maxDate = element.getDate();
+            }
+            updateIndexHeader(element.getId(), element.getDate());
+            /*
+            long nextPosition = 0;
+            if (!this.getElements().isEmpty()) {
+                IndexElement indexElement = this.getElements().get(this.getElements().size() - 1);
+                nextPosition = indexElement.getPosition() + indexElement.getSize();
+            }
+            */
+            this.getElements().add(new IndexElement(0, 0, element.getId(), element.getDate(), additionalData, size, position));
+        } else {
+            indexElement.setSizeInLog(size);
+            indexElement.setPositionInLog(position);
+            indexElement.setAdditionalData(additionalData);
+            indexElement.setDate(element.getDate());
         }
-        updateIndexHeader(element.getId(), element.getDate());
-        long nextPosition = 0;
-        if (!this.getElements().isEmpty()) {
-            IndexElement indexElement = this.getElements().get(this.getElements().size() - 1);
-            nextPosition = indexElement.getPosition() + indexElement.getSize();
-        }
-        this.getElements().add(new IndexElement(size, nextPosition, element.getId(), element.getDate(), additionalData));
     }
 
     private void updateIndexHeader(long id, long date) {
@@ -84,7 +94,7 @@ class Index {
             this.maxDate = date;
     }
 
-    public void removeElements(int startId, int count) {
+    void removeElements(int startId, int count) {
         long positionInDataFile = this.getElements().get(startId).getPosition();
         for (int i = 0; i < count; i++)
             getElements().remove(startId);
@@ -92,12 +102,13 @@ class Index {
     }
 
     private void updateIndex(int startId, long startPosition) {
+        /*
         for (int i = startId; i < this.getElements().size(); i++) {
             IndexElement indexElement = this.getElements().get(i);
             indexElement.setPosition(startPosition);
             startPosition += indexElement.getSize();
         }
-
+        */
         setMinId(getElements().stream().mapToLong(IndexElement::getId).min().orElse(0));
         setMinDate(getElements().stream().mapToLong(IndexElement::getDate).min().orElse(0));
         setMaxId(getElements().stream().mapToLong(IndexElement::getId).max().orElse(0));
