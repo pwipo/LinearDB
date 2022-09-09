@@ -12,7 +12,7 @@ class TestElement {
     private int y;
     private Long date;
 
-    public TestElement(Long id, int x, int y, Long date) {
+    TestElement(Long id, int x, int y, Long date) {
         this.id = id;
         this.x = x;
         this.y = y;

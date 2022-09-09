@@ -36,7 +36,9 @@ public class DB<T> implements Closeable {
 
     private final static int INDEX_FILE_HEADER_LENGTH = 4;
     private final static int INDEX_FILE_ELEMENT_LENGTH = 4 + 2 * 8;
+    private final static int DATA_FILE_HEADER_LENGTH = 4;
     private final static int DATA_FILE_ELEMENT_HEADER_LENGTH = 4;
+    private final static int LOG_FILE_HEADER_LENGTH = 4;
     private final static int LOG_FILE_ELEMENT_HEADER_LENGTH = 1 + INDEX_FILE_ELEMENT_LENGTH;
 
     private final static byte LOG_ELEMENT_TYPE_SAVE = 1;
@@ -63,8 +65,6 @@ public class DB<T> implements Closeable {
     private final Function<T, List<Object>> funcIndexGetAdditionalData;
 
     private Index index;
-
-    private int currentVersion;
 
     private final File indexFile;
     private final File dataFile;
@@ -107,7 +107,6 @@ public class DB<T> implements Closeable {
         this.folder = folder;
         this.dbName = dbName;
         this.version = version;
-        this.currentVersion = version;
         folder.mkdirs();
         this.index = null;
         this.rafIndex = null;
@@ -168,33 +167,36 @@ public class DB<T> implements Closeable {
         if (rafLog == null)
             this.rafLog = new RandomAccessFile(logFile, "rw");
         long length = rafIndex.length();
-        if (length > 0) {
-            long lengthData = rafData.length();
+        long lengthData = rafData.length();
+        if (length > 0 && lengthData > 0) {
             rafIndex.seek(0);
-            currentVersion = rafIndex.readInt();
+            int versionIndex = rafIndex.readInt();
             // long minId = rafIndex.readLong();
             // long minDate = rafIndex.readLong();
             // long maxId = rafIndex.readLong();
             // long maxDate = rafIndex.readLong();
 
             List<IndexElement> sizes = new LinkedList<>();
-            long positionInDataFile = 0;
+            long positionInDataFile = DATA_FILE_HEADER_LENGTH;
             while (length > rafIndex.getFilePointer()) {
                 if (lengthData <= positionInDataFile) {
                     rafIndex.setLength(rafIndex.getFilePointer());
                     // rafData.setLength(positionInDataFile);
                     break;
                 }
-                IndexElement indexElement = readIndexElement(rafIndex, positionInDataFile, countAdditionalBytesInIndex, getCurrentVersion());
+                IndexElement indexElement = readIndexElement(rafIndex, positionInDataFile, countAdditionalBytesInIndex, versionIndex);
                 sizes.add(indexElement);
                 positionInDataFile += indexElement.getSize();
             }
-            index = new Index(sizes);
+            index = new Index(sizes, versionIndex);
         } else {
             index = initNewDB(rafIndex, rafData);
         }
-        if (rafLog.length() > 0)
+        if (rafLog.length() > LOG_FILE_HEADER_LENGTH) {
             applyLog(buildIndexFromLog(), true);
+        } else {
+            initLog(rafLog);
+        }
     }
 
     synchronized private IndexElement readIndexElement(RandomAccessFile raf, long position, int countAdditionalBytesInIndex, int ver) throws IOException {
@@ -215,18 +217,19 @@ public class DB<T> implements Closeable {
                 , additionalData
                 , null
                 , null
+                , ver
         );
     }
 
     synchronized private Index buildIndexFromLog() throws IOException {
+        int ver = rafLog.readInt();
         long length = rafLog.length();
         Map<Long, IndexElement> lastInLog = new HashMap<>();
-        long startPosition = 0;
-        while (length > startPosition) {
+        while (length > rafLog.getFilePointer()) {
             byte type = rafLog.readByte();
             IndexElement indexElement = null;
             if (LOG_ELEMENT_TYPE_SAVE == type) {
-                indexElement = readIndexElement(rafLog, -1, countAdditionalBytesInIndex, getVersion());
+                indexElement = readIndexElement(rafLog, -1, countAdditionalBytesInIndex, ver);
                 indexElement.setPositionInLog(indexElement.getPosition());
                 indexElement.setSizeInLog(indexElement.getSize());
                 if (indexElement.getSize() > 0) {
@@ -237,10 +240,9 @@ public class DB<T> implements Closeable {
                 }
                 lastInLog.put(indexElement.getId(), indexElement);
             } else if (LOG_ELEMENT_TYPE_DELETE == type) {
-                indexElement = readIndexElement(rafLog, 0, 0, getVersion());
+                indexElement = readIndexElement(rafLog, 0, 0, ver);
                 lastInLog.put(indexElement.getId(), null);
             }
-            startPosition = rafLog.getFilePointer();
         }
         List<IndexElement> indexElements = new LinkedList<>();
 
@@ -266,7 +268,7 @@ public class DB<T> implements Closeable {
             indexElements.add(new IndexElement(null, i));
         });
 
-        return new Index(indexElements);
+        return new Index(indexElements, getVersion());
     }
 
     synchronized private void applyLog(Index index, boolean reinit) throws IOException {
@@ -274,8 +276,6 @@ public class DB<T> implements Closeable {
             return;
         clearTmpFiles();
         try (RandomAccessFile rafIndexNew = new RandomAccessFile(indexFileNew, "rw"); RandomAccessFile rafDataNew = new RandomAccessFile(dataFileNew, "rw")) {
-            boolean isSameVer = getCurrentVersion() == getVersion();
-            int ver = getCurrentVersion();
             initNewDB(rafIndexNew, rafDataNew);
             for (IndexElement indexElement : index.getElements()) {
                 RandomAccessFile rafIn = indexElement.getPositionInLog() != null ? rafLog : rafData;
@@ -284,10 +284,10 @@ public class DB<T> implements Closeable {
                 byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
                 rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
                 rafIn.readFully(data);
-                if (!isSameVer)
-                    data = funcReverseConverter.apply(getVersion(), funcConverter.apply(ver, data));
+                if (indexElement.getVersion() != getVersion())
+                    data = funcReverseConverter.apply(getVersion(), funcConverter.apply(indexElement.getVersion(), data));
 
-                writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, indexElement.getId(), indexElement.getDate(), indexElement.getAdditionalData(), data);
+                writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, indexElement.getId(), indexElement.getDate(), indexElement.getAdditionalData(), data, indexElement.getVersion());
             }
         }
 
@@ -329,7 +329,7 @@ public class DB<T> implements Closeable {
         if (rafDataOpen)
             this.rafData = new RandomAccessFile(dataFile, "rw");
 
-        rafLog.setLength(0);
+        initLog(rafLog);
         if (reinit) {
             close();
             open();
@@ -362,10 +362,6 @@ public class DB<T> implements Closeable {
 
     public int getVersion() {
         return version;
-    }
-
-    public int getCurrentVersion() {
-        return currentVersion;
     }
 
     public File getFolder() {
@@ -538,7 +534,7 @@ public class DB<T> implements Closeable {
         return indexElementList.stream()
                 .map(e -> {
                     if (dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null) {
-                        return readElement(dataTmp, (int) (e.getPosition() - min.getPosition()), e.getSize());
+                        return readElement(dataTmp, (int) (e.getPosition() - min.getPosition()), e.getSize(), e.getVersion());
                     } else {
                         return readElement(e);
                     }
@@ -661,19 +657,19 @@ public class DB<T> implements Closeable {
             int b = rafIn.read(data);
             if (b != data.length)
                 throw new Exception("wrong element size. index damaged.");
-            return funcConverter.apply(e.getPositionInLog() != null ? getVersion() : getCurrentVersion(), data);
+            return funcConverter.apply(e.getPositionInLog() != null ? getVersion() : e.getVersion(), data);
         } catch (Exception ex) {
             throw new RuntimeException("error", ex);
         }
     }
 
-    synchronized private T readElement(byte[] dataStorage, int position, int size) {
+    synchronized private T readElement(byte[] dataStorage, int position, int size, int version) {
         if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
             throw new RuntimeException("wrong element size. index damaged.");
         try {
             byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
             System.arraycopy(dataStorage, position + DATA_FILE_ELEMENT_HEADER_LENGTH, data, 0, data.length);
-            return funcConverter.apply(getCurrentVersion(), data);
+            return funcConverter.apply(version, data);
         } catch (Exception ex) {
             throw new RuntimeException("error", ex);
         }
@@ -725,9 +721,15 @@ public class DB<T> implements Closeable {
         rafIndex.writeInt(getVersion());
         rafIndex.setLength(INDEX_FILE_HEADER_LENGTH);
         rafData.seek(0);
-        rafData.setLength(0);
-        currentVersion = getVersion();
-        return new Index(null);
+        rafData.writeInt(getVersion());
+        rafData.setLength(DATA_FILE_HEADER_LENGTH);
+        return new Index(null, getVersion());
+    }
+
+    private void initLog(RandomAccessFile rafLog) throws IOException {
+        rafLog.seek(0);
+        rafLog.writeInt(getVersion());
+        rafLog.setLength(LOG_FILE_HEADER_LENGTH);
     }
 
     private void clearTmpFiles() {
@@ -856,12 +858,12 @@ public class DB<T> implements Closeable {
         index.removeElements(startPosition, count);
     }
 
-    synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
+    synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes, int version) throws IOException {
         rafIndex.writeInt(elementSize);
         rafIndex.writeLong(id);
         rafIndex.writeLong(date);
         if (additionalData != null)
-            rafIndex.write(funcIndexAdditionalDataReverseConverter.apply(getCurrentVersion(), additionalData));
+            rafIndex.write(funcIndexAdditionalDataReverseConverter.apply(version, additionalData));
         rafData.writeInt(bytes.length);
         rafData.write(bytes);
     }

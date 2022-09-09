@@ -10,8 +10,9 @@ class Index {
     private long maxDate;
 
     private LinkedList<IndexElement> elements;
+    private int version;
 
-    Index(List<IndexElement> elements) {
+    Index(List<IndexElement> elements, int version) {
         this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
 
         this.minId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
@@ -19,6 +20,7 @@ class Index {
         this.maxId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
         this.maxDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
         this.elements.forEach(e -> updateIndexHeader(e.getId(), e.getDate()));
+        this.version = version;
     }
 
     long getMinId() {
@@ -57,6 +59,10 @@ class Index {
         return elements;
     }
 
+    int getVersion() {
+        return version;
+    }
+
     <T> void saveElement(DataElement<T> element, List<Object> additionalData, int size, long position) {
         IndexElement indexElement = this.getElements().stream().filter(e -> e.getId() == element.getId()).findAny().orElse(null);
         if (indexElement == null) {
@@ -74,7 +80,7 @@ class Index {
                 nextPosition = indexElement.getPosition() + indexElement.getSize();
             }
             */
-            this.getElements().add(new IndexElement(0, 0, element.getId(), element.getDate(), additionalData, size, position));
+            this.getElements().add(new IndexElement(0, 0, element.getId(), element.getDate(), additionalData, size, position, version));
         } else {
             indexElement.setSizeInLog(size);
             indexElement.setPositionInLog(position);

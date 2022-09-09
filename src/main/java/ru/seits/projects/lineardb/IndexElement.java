@@ -11,8 +11,9 @@ class IndexElement {
     private List<Object> additionalData;
     private Integer sizeInLog;
     private Long positionInLog;
+    private int version;
 
-    IndexElement(int size, long position, long id, long date, List<Object> additionalData, Integer sizeInLog, Long positionInLog) {
+    IndexElement(int size, long position, long id, long date, List<Object> additionalData, Integer sizeInLog, Long positionInLog, int version) {
         this.size = size;
         this.position = position;
         this.id = id;
@@ -20,6 +21,7 @@ class IndexElement {
         this.additionalData = additionalData;
         this.sizeInLog = sizeInLog;
         this.positionInLog = positionInLog;
+        this.version = version;
     }
 
     IndexElement(IndexElement indexElement, IndexElement indexElementNew) {
@@ -30,7 +32,8 @@ class IndexElement {
                 indexElementNew.getDate(),
                 indexElementNew.getAdditionalData(),
                 indexElementNew.getSizeInLog(),
-                indexElementNew.getPositionInLog()
+                indexElementNew.getPositionInLog(),
+                indexElementNew.version
         );
     }
 
@@ -76,5 +79,9 @@ class IndexElement {
 
     void setPositionInLog(Long positionInLog) {
         this.positionInLog = positionInLog;
+    }
+
+    public int getVersion() {
+        return version;
     }
 }
