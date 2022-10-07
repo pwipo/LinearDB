@@ -284,8 +284,13 @@ public class DB<T> implements Closeable {
                 byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
                 rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
                 rafIn.readFully(data);
-                if (indexElement.getVersion() != getVersion())
-                    data = funcReverseConverter.apply(getVersion(), funcConverter.apply(indexElement.getVersion(), data));
+                if (indexElement.getVersion() != getVersion()) {
+                    T obj = funcConverter.apply(indexElement.getVersion(), data);
+                    if (obj != null)
+                        data = funcReverseConverter.apply(getVersion(), obj);
+                    if (data == null)
+                        continue;
+                }
 
                 writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, indexElement.getId(), indexElement.getDate(), indexElement.getAdditionalData(), data, indexElement.getVersion());
             }
@@ -539,6 +544,7 @@ public class DB<T> implements Closeable {
                         return readElement(e);
                     }
                 })
+                .filter(Objects::nonNull)
                 .filter(e -> ids.contains(funcGetId.apply(e)))
                 .collect(Collectors.toList());
     }
@@ -625,6 +631,7 @@ public class DB<T> implements Closeable {
         Objects.requireNonNull(filter);
         return index.getElements().stream()
                 .map(this::readElement)
+                .filter(Objects::nonNull)
                 .filter(filter)
                 .collect(Collectors.toList());
     }
@@ -642,6 +649,7 @@ public class DB<T> implements Closeable {
         Objects.requireNonNull(filter);
         return index.getElements().stream()
                 .map(this::readElement)
+                .filter(Objects::nonNull)
                 .filter(filter)
                 .map(funcGetId)
                 .collect(Collectors.toList());
