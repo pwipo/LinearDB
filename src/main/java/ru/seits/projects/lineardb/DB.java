@@ -33,6 +33,7 @@ public class DB<T> implements Closeable {
     public final static String EXTENSION_DATA = "dat";
     public final static String EXTENSION_INDEX = "idx";
     public final static String EXTENSION_LOG = "log";
+    public final static String EXTENSION_LOCK = "lck";
 
     private final static int INDEX_FILE_HEADER_LENGTH = 4;
     private final static int INDEX_FILE_ELEMENT_LENGTH = 4 + 2 * 8;
@@ -69,6 +70,7 @@ public class DB<T> implements Closeable {
     private final File indexFile;
     private final File dataFile;
     private final File logFile;
+    private final File lockFile;
     private final File indexFileNew;
     private final File dataFileNew;
     private final File indexFileOld;
@@ -127,10 +129,21 @@ public class DB<T> implements Closeable {
         this.indexFile = new File(folder, dbName + "." + EXTENSION_INDEX);
         this.dataFile = new File(folder, dbName + "." + EXTENSION_DATA);
         this.logFile = new File(folder, dbName + "." + EXTENSION_LOG);
+        this.lockFile = new File(folder, dbName + "." + EXTENSION_LOCK);
         this.indexFileNew = new File(folder, dbName + "-new." + EXTENSION_INDEX);
         this.dataFileNew = new File(folder, dbName + "-new." + EXTENSION_DATA);
         this.indexFileOld = new File(folder, dbName + "-old." + EXTENSION_INDEX);
         this.dataFileOld = new File(folder, dbName + "-old." + EXTENSION_DATA);
+
+        if (lockFile.exists()) {
+            throw new IllegalAccessError("db in use");
+        }
+        try {
+            lockFile.createNewFile();
+            lockFile.deleteOnExit();
+        } catch (Exception e) {
+            throw new RuntimeException("error while create lock file", e);
+        }
     }
 
     public boolean isOpen() {
@@ -154,6 +167,7 @@ public class DB<T> implements Closeable {
         }
         index = null;
         clearTmpFiles();
+        lockFile.delete();
     }
 
     synchronized public void open() throws IOException {
