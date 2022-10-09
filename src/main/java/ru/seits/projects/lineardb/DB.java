@@ -291,23 +291,31 @@ public class DB<T> implements Closeable {
         clearTmpFiles();
         try (RandomAccessFile rafIndexNew = new RandomAccessFile(indexFileNew, "rw"); RandomAccessFile rafDataNew = new RandomAccessFile(dataFileNew, "rw")) {
             initNewDB(rafIndexNew, rafDataNew);
+            LinkedList<IndexElement> indexElements = new LinkedList<>();
             for (IndexElement indexElement : index.getElements()) {
-                RandomAccessFile rafIn = indexElement.getPositionInLog() != null ? rafLog : rafData;
-                long position = indexElement.getPositionInLog() != null ? indexElement.getPositionInLog() : indexElement.getPosition();
-                int size = indexElement.getSizeInLog() != null ? indexElement.getSizeInLog() : indexElement.getSize();
-                byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
-                rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
-                rafIn.readFully(data);
-                if (indexElement.getVersion() != getVersion()) {
-                    T obj = funcConverter.apply(indexElement.getVersion(), data);
-                    if (obj != null)
-                        data = funcReverseConverter.apply(getVersion(), obj);
-                    if (data == null)
-                        continue;
-                }
+                try {
+                    RandomAccessFile rafIn = indexElement.getPositionInLog() != null ? rafLog : rafData;
+                    long position = indexElement.getPositionInLog() != null ? indexElement.getPositionInLog() : indexElement.getPosition();
+                    int size = indexElement.getSizeInLog() != null ? indexElement.getSizeInLog() : indexElement.getSize();
+                    byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
+                    rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
+                    rafIn.readFully(data);
+                    if (indexElement.getVersion() != getVersion()) {
+                        T obj = funcConverter.apply(indexElement.getVersion(), data);
+                        if (obj != null)
+                            data = funcReverseConverter.apply(getVersion(), obj);
+                        if (data == null)
+                            continue;
+                    }
 
-                writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, indexElement.getId(), indexElement.getDate(), indexElement.getAdditionalData(), data, indexElement.getVersion());
+                    writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, indexElement.getId(), indexElement.getDate(), indexElement.getAdditionalData(), data, indexElement.getVersion());
+                    indexElements.add(indexElement);
+                } catch (Exception e) {
+                    //if error - not stop operation
+                    e.printStackTrace();
+                }
             }
+            index.saveAllNew(indexElements);
         }
 
         boolean rafIndexOpen = rafIndex != null;
@@ -881,22 +889,34 @@ public class DB<T> implements Closeable {
     }
 
     synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes, int version) throws IOException {
+        //check consistent
+        if (funcConverter.apply(getVersion(), bytes) == null)
+            throw new IllegalArgumentException("wrong data");
+        byte[] additional = null;
+        if (additionalData != null)
+            additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
+        rafData.writeInt(bytes.length);
+        rafData.write(bytes);
         rafIndex.writeInt(elementSize);
         rafIndex.writeLong(id);
         rafIndex.writeLong(date);
-        if (additionalData != null)
-            rafIndex.write(funcIndexAdditionalDataReverseConverter.apply(version, additionalData));
-        rafData.writeInt(bytes.length);
-        rafData.write(bytes);
+        if (additional != null)
+            rafIndex.write(additional);
     }
 
     synchronized private void writeElementToLog(RandomAccessFile rafLog, byte type, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
+        //check consistent
+        if (bytes != null && funcConverter.apply(getVersion(), bytes) == null)
+            throw new IllegalArgumentException("wrong data");
+        byte[] additional = null;
+        if (additionalData != null)
+            additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
         rafLog.writeByte(type);
         rafLog.writeInt(elementSize);
         rafLog.writeLong(id);
         rafLog.writeLong(date);
-        if (additionalData != null)
-            rafLog.write(funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData));
+        if (additional != null)
+            rafLog.write(additional);
         if (bytes != null) {
             rafLog.writeInt(bytes.length);
             rafLog.write(bytes);

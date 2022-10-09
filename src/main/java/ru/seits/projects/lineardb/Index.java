@@ -13,13 +13,7 @@ class Index {
     private int version;
 
     Index(List<IndexElement> elements, int version) {
-        this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
-
-        this.minId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
-        this.minDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
-        this.maxId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
-        this.maxDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
-        this.elements.forEach(e -> updateIndexHeader(e.getId(), e.getDate()));
+        saveAllNew(elements);
         this.version = version;
     }
 
@@ -87,6 +81,15 @@ class Index {
             indexElement.setAdditionalData(additionalData);
             indexElement.setDate(element.getDate());
         }
+    }
+
+    public void saveAllNew(List<IndexElement> elements) {
+        this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
+        this.minId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
+        this.minDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
+        this.maxId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
+        this.maxDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
+        this.elements.forEach(e -> updateIndexHeader(e.getId(), e.getDate()));
     }
 
     private void updateIndexHeader(long id, long date) {
