@@ -88,9 +88,9 @@ public class DBTest {
     @Test
     @Order(5)
     public void findByIdInRange() {
-        List<TestElement> elements = db.findByIdInRange(db.getMinId(), db.getMinId() + 2);
+        List<TestElement> elements = db.findByIdInRange(db.getMinId(), db.getMaxId() - 1);
         Assertions.assertFalse(elements.isEmpty());
-        Assertions.assertEquals(2, elements.size());
+        Assertions.assertTrue(elements.size() > 2);
         elements.forEach(System.out::println);
     }
 
@@ -125,7 +125,7 @@ public class DBTest {
         Assertions.assertTrue(delete);
 
         List<TestElement> all = db.getAll();
-        Assertions.assertTrue(all.size() >= 4);
+        Assertions.assertTrue(all.size() >= 3);
         all.forEach(System.out::println);
     }
 

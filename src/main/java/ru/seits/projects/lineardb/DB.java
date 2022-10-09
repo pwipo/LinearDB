@@ -1,9 +1,6 @@
 package ru.seits.projects.lineardb;
 
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -843,48 +840,56 @@ public class DB<T> implements Closeable {
         long nextId = index.getMaxId() + 1;
         long date = System.currentTimeMillis();
         long position = rafLog.getFilePointer();
-        for (T data : dataList) {
-            Long elementId = funcGetId.apply(data);
-            if (elementId == null) {
-                elementId = nextId++;
-                funcSetId.accept(data, elementId);
-            } else if (nextId < elementId) {
-                nextId = elementId + 1;
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
+            for (T data : dataList) {
+                Long elementId = funcGetId.apply(data);
+                if (elementId == null) {
+                    elementId = nextId++;
+                    funcSetId.accept(data, elementId);
+                } else if (nextId < elementId) {
+                    nextId = elementId + 1;
+                }
+                Long elementDate = funcGetDate.apply(data);
+                if (elementDate == null) {
+                    elementDate = date;
+                    funcSetDate.accept(data, elementDate);
+                }
+
+                byte[] bytes = funcReverseConverter.apply(getVersion(), data);
+                DataElement<T> dataElement = new DataElement<>(
+                        elementId,
+                        elementDate,
+                        data);
+
+                int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
+                List<Object> additionalData = null;
+                if (funcIndexAdditionalDataReverseConverter != null && funcIndexGetAdditionalData != null)
+                    additionalData = funcIndexGetAdditionalData.apply(data);
+                writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, dataElement.getId(), dataElement.getDate(), additionalData, bytes);
+
+                elements.add(dataElement.getData());
+                position += logFileElementHeaderLength;
+                index.saveElement(dataElement, additionalData, elementSize, position);
+                position += elementSize;
             }
-            Long elementDate = funcGetDate.apply(data);
-            if (elementDate == null) {
-                elementDate = date;
-                funcSetDate.accept(data, elementDate);
-            }
-
-            byte[] bytes = funcReverseConverter.apply(getVersion(), data);
-            DataElement<T> dataElement = new DataElement<>(
-                    elementId,
-                    elementDate,
-                    data);
-
-            int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
-            List<Object> additionalData = null;
-            if (funcIndexAdditionalDataReverseConverter != null && funcIndexGetAdditionalData != null)
-                additionalData = funcIndexGetAdditionalData.apply(data);
-            writeElementToLog(rafLog, LOG_ELEMENT_TYPE_SAVE, elementSize, dataElement.getId(), dataElement.getDate(), additionalData, bytes);
-
-            elements.add(dataElement.getData());
-            position += logFileElementHeaderLength;
-            index.saveElement(dataElement, additionalData, elementSize, position);
-            position += elementSize;
+            dos.flush();
+            rafLog.write(baos.toByteArray());
+            rafLog.setLength(rafLog.getFilePointer());
         }
-        rafLog.setLength(rafLog.getFilePointer());
 
         return elements;
     }
 
     synchronized private void operationDelete(int startPosition, int count) throws IOException {
         List<IndexElement> indexElements = index.getElements().subList(startPosition, startPosition + count);
-        for (IndexElement indexElement : indexElements) {
-            writeElementToLog(rafLog, LOG_ELEMENT_TYPE_DELETE, 0, indexElement.getId(), System.currentTimeMillis(), null, null);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
+            for (IndexElement indexElement : indexElements) {
+                writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, indexElement.getId(), System.currentTimeMillis(), null, null);
+            }
+            dos.flush();
+            rafLog.write(baos.toByteArray());
+            rafLog.setLength(rafLog.getFilePointer());
         }
-        rafLog.setLength(rafLog.getFilePointer());
         index.removeElements(startPosition, count);
     }
 
@@ -904,22 +909,22 @@ public class DB<T> implements Closeable {
             rafIndex.write(additional);
     }
 
-    synchronized private void writeElementToLog(RandomAccessFile rafLog, byte type, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
+    synchronized private void writeElementToLog(DataOutputStream dos, byte type, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
         //check consistent
         if (bytes != null && funcConverter.apply(getVersion(), bytes) == null)
             throw new IllegalArgumentException("wrong data");
         byte[] additional = null;
         if (additionalData != null)
             additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
-        rafLog.writeByte(type);
-        rafLog.writeInt(elementSize);
-        rafLog.writeLong(id);
-        rafLog.writeLong(date);
+        dos.writeByte(type);
+        dos.writeInt(elementSize);
+        dos.writeLong(id);
+        dos.writeLong(date);
         if (additional != null)
-            rafLog.write(additional);
+            dos.write(additional);
         if (bytes != null) {
-            rafLog.writeInt(bytes.length);
-            rafLog.write(bytes);
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
         }
     }
 

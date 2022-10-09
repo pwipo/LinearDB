@@ -89,7 +89,7 @@ class Index {
         this.minDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
         this.maxId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
         this.maxDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
-        this.elements.forEach(e -> updateIndexHeader(e.getId(), e.getDate()));
+        updateIndex();
     }
 
     private void updateIndexHeader(long id, long date) {
@@ -107,10 +107,10 @@ class Index {
         long positionInDataFile = this.getElements().get(startId).getPosition();
         for (int i = 0; i < count; i++)
             getElements().remove(startId);
-        updateIndex(startId, positionInDataFile);
+        updateIndex();
     }
 
-    private void updateIndex(int startId, long startPosition) {
+    private void updateIndex() {
         /*
         for (int i = startId; i < this.getElements().size(); i++) {
             IndexElement indexElement = this.getElements().get(i);
