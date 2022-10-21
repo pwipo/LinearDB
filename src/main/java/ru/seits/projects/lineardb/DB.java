@@ -149,7 +149,12 @@ public class DB<T> implements Closeable {
 
     @Override
     synchronized public void close() throws IOException {
-        applyLog(index, false);
+        close(true);
+    }
+
+    synchronized public void close(boolean needApplyLog) throws IOException {
+        if (needApplyLog)
+            applyLog(index, false);
         if (rafLog != null) {
             rafLog.close();
             rafLog = null;
@@ -166,6 +171,7 @@ public class DB<T> implements Closeable {
         clearTmpFiles();
         lockFile.delete();
     }
+
 
     synchronized public void open() throws IOException {
         if (isOpen())
@@ -998,7 +1004,7 @@ public class DB<T> implements Closeable {
     }
 
     synchronized public void removeDB() throws IOException {
-        close();
+        close(false);
         new File(folder, dbName + "." + EXTENSION_INDEX).delete();
         new File(folder, dbName + "." + EXTENSION_DATA).delete();
         new File(folder, dbName + "." + EXTENSION_LOG).delete();
