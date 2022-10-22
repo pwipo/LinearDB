@@ -692,19 +692,23 @@ public class DB<T> implements Closeable {
                 throw new Exception("wrong element size. index damaged.");
             return funcConverter.apply(e.getPositionInLog() != null ? getVersion() : e.getVersion(), data);
         } catch (Exception ex) {
-            throw new RuntimeException("error", ex);
+            // throw new RuntimeException("error", ex);
+            ex.printStackTrace();
+            return null;
         }
     }
 
     synchronized private T readElement(byte[] dataStorage, int position, int size, int version) {
-        if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
-            throw new RuntimeException("wrong element size. index damaged.");
         try {
+            if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
+                throw new RuntimeException("wrong element size. index damaged.");
             byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
             System.arraycopy(dataStorage, position + DATA_FILE_ELEMENT_HEADER_LENGTH, data, 0, data.length);
             return funcConverter.apply(version, data);
         } catch (Exception ex) {
-            throw new RuntimeException("error", ex);
+            // throw new RuntimeException("error", ex);
+            ex.printStackTrace();
+            return null;
         }
     }
 
