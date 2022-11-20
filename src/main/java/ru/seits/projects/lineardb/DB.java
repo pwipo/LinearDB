@@ -135,12 +135,6 @@ public class DB<T> implements Closeable {
         if (lockFile.exists()) {
             throw new IllegalAccessError("db in use");
         }
-        try {
-            lockFile.createNewFile();
-            lockFile.deleteOnExit();
-        } catch (Exception e) {
-            throw new RuntimeException("error while create lock file", e);
-        }
     }
 
     public boolean isOpen() {
@@ -169,14 +163,22 @@ public class DB<T> implements Closeable {
         }
         index = null;
         clearTmpFiles();
-        lockFile.delete();
+        if (lockFile.exists())
+            lockFile.delete();
     }
-
 
     synchronized public void open() throws IOException {
         if (isOpen())
             return;
         clearTmpFiles();
+        if (!lockFile.exists()) {
+            try {
+                lockFile.createNewFile();
+                lockFile.deleteOnExit();
+            } catch (Exception e) {
+                throw new RuntimeException("error while create lock file", e);
+            }
+        }
         if (rafIndex == null)
             this.rafIndex = new RandomAccessFile(indexFile, "rw");
         if (rafData == null)
