@@ -48,6 +48,7 @@ public class DB<T> implements Closeable {
     private RandomAccessFile rafIndex;
     private RandomAccessFile rafData;
     private RandomAccessFile rafLog;
+    private RandomAccessFile rafLock;
     private final BiFunction<Integer, byte[], T> funcConverter;
     private final BiFunction<Integer, T, byte[]> funcReverseConverter;
     private final Function<T, Long> funcGetId;
@@ -133,7 +134,12 @@ public class DB<T> implements Closeable {
         this.dataFileOld = new File(folder, dbName + "-old." + EXTENSION_DATA);
 
         if (lockFile.exists()) {
-            throw new IllegalAccessError("db in use");
+            try {
+                if (!lockFile.delete())
+                    throw new IllegalAccessError("db in use");
+            } catch (Exception e) {
+                throw new IllegalAccessError("db in use");
+            }
         }
     }
 
@@ -163,6 +169,10 @@ public class DB<T> implements Closeable {
         }
         index = null;
         clearTmpFiles();
+        if (rafLock != null) {
+            rafLock.close();
+            rafLock = null;
+        }
         if (lockFile.exists())
             lockFile.delete();
     }
@@ -185,6 +195,8 @@ public class DB<T> implements Closeable {
             this.rafData = new RandomAccessFile(dataFile, "rw");
         if (rafLog == null)
             this.rafLog = new RandomAccessFile(logFile, "rw");
+        if (rafLock == null)
+            this.rafLock = new RandomAccessFile(lockFile, "r");
         long length = rafIndex.length();
         long lengthData = rafData.length();
         if (length > 0 && lengthData > 0) {
