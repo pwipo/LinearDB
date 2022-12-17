@@ -375,7 +375,7 @@ public class DB<T> implements Closeable {
 
         initLog(rafLog);
         if (reinit) {
-            close();
+            close(false);
             open();
         }
     }
