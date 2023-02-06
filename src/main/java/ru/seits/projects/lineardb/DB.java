@@ -317,7 +317,7 @@ public class DB<T> implements Closeable {
                     byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
                     rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
                     rafIn.readFully(data);
-                    if (indexElement.getVersion() != getVersion()) {
+                    if (indexElement.getVersion() != getVersion() && indexElement.getPositionInLog() == null && indexElement.getSizeInLog() == null) {
                         T obj = funcConverter.apply(indexElement.getVersion(), data);
                         if (obj != null)
                             data = funcReverseConverter.apply(getVersion(), obj);
