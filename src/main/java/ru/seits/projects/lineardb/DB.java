@@ -561,22 +561,25 @@ public class DB<T> implements Closeable {
         if (indexElementList.isEmpty())
             return new ArrayList<>();
 
-        IndexElement min = indexElementList.stream()
+        Long minPosition = indexElementList.stream()
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
                 .min(Comparator.comparingLong(IndexElement::getPosition))
+                .map(IndexElement::getPosition)
                 .orElse(null);
         IndexElement max = indexElementList.stream()
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
                 .max(Comparator.comparingLong(IndexElement::getPosition))
                 .orElse(null);
+        Long maxPosition = max != null ? max.getPosition() : null;
+        Integer maxSize = max != null ? max.getSize() : null;
         byte[] data = null;
-        if (min != null && max != null) {
-            long size = max.getPosition() + max.getSize() - min.getPosition();
-            if (size < 0 || size >= Integer.MAX_VALUE)
+        if (minPosition != null && maxPosition != null) {
+            long size = maxPosition + maxSize - minPosition;
+            if (size <= 0 || size >= Integer.MAX_VALUE)
                 return new ArrayList<>();
-            data = new byte[Math.abs((int) size)];
+            data = new byte[(int) size];
             try {
-                rafData.seek(min.getPosition());
+                rafData.seek(minPosition);
                 rafData.readFully(data);
             } catch (Exception e) {
                 throw new RuntimeException("error", e);
@@ -589,8 +592,9 @@ public class DB<T> implements Closeable {
         byte[] dataTmp = data;
         return indexElementList.stream()
                 .map(e -> {
-                    if (dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null) {
-                        return readElement(dataTmp, (int) (e.getPosition() - min.getPosition()), e.getSize(), e.getVersion());
+                    long position = e.getPosition() - minPosition;
+                    if (dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null && position > 0 && position < dataTmp.length) {
+                        return readElement(dataTmp, (int) position, e.getSize(), e.getVersion());
                     } else {
                         return readElement(e);
                     }
@@ -601,8 +605,9 @@ public class DB<T> implements Closeable {
     }
 
     private List<List<IndexElement>> batchElements(List<IndexElement> indexElementList) {
+        ArrayList<List<IndexElement>> result = new ArrayList<>();
         if (indexElementList.isEmpty())
-            return new ArrayList<>();
+            return result;
 
         IndexElement min = indexElementList.stream()
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
@@ -616,16 +621,21 @@ public class DB<T> implements Closeable {
         if (min != null && max != null) {
             long size = max.getPosition() + max.getSize() - min.getPosition();
             if (size < 0)
-                return new ArrayList<>();
+                return result;
 
             int count = (int) size / maxSize + 1;
+            if (count < 2) {
+                result.add(indexElementList);
+                return result;
+            }
             int batchSize = indexElementList.size() / count;
-            List<List<IndexElement>> result = new LinkedList<>();
+            if (batchSize < 2)
+                return result;
             for (int i = 0; i < indexElementList.size(); i += batchSize)
                 result.add(indexElementList.subList(i, Math.min(i + batchSize, indexElementList.size())));
             return result;
         }
-        return new ArrayList<>();
+        return result;
     }
 
     /**
