@@ -572,7 +572,7 @@ public class DB<T> implements Closeable {
         byte[] data = null;
         if (min != null && max != null) {
             long size = max.getPosition() + max.getSize() - min.getPosition();
-            if (size < 0)
+            if (size < 0 || size >= Integer.MAX_VALUE)
                 return new ArrayList<>();
             data = new byte[Math.abs((int) size)];
             try {
