@@ -612,7 +612,7 @@ public class DB<T> implements Closeable {
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
                 .max(Comparator.comparingLong(IndexElement::getPosition))
                 .orElse(null);
-        int maxSize = Integer.MAX_VALUE - 10;
+        int maxSize = Integer.MAX_VALUE / 2;
         if (min != null && max != null) {
             long size = max.getPosition() + max.getSize() - min.getPosition();
             if (size < 0)
