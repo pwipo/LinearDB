@@ -548,7 +548,16 @@ public class DB<T> implements Closeable {
         return fastRead(index.getElements().subList(firstId, index.getElements().size()));
     }
 
-    synchronized private List<T> fastRead(List<IndexElement> indexElementList) {
+    private List<T> fastRead(List<IndexElement> indexElementList) {
+        List<List<IndexElement>> batchElements = batchElements(indexElementList);
+        if (batchElements.isEmpty())
+            return new ArrayList<>();
+        return batchElements.stream()
+                .flatMap(l -> fastReadPrv(l).stream())
+                .collect(Collectors.toList());
+    }
+
+    synchronized private List<T> fastReadPrv(List<IndexElement> indexElementList) {
         if (indexElementList.isEmpty())
             return new ArrayList<>();
 
@@ -562,7 +571,10 @@ public class DB<T> implements Closeable {
                 .orElse(null);
         byte[] data = null;
         if (min != null && max != null) {
-            data = new byte[(int) (max.getPosition() + max.getSize() - min.getPosition())];
+            long size = max.getPosition() + max.getSize() - min.getPosition();
+            if (size < 0)
+                return new ArrayList<>();
+            data = new byte[Math.abs((int) size)];
             try {
                 rafData.seek(min.getPosition());
                 rafData.readFully(data);
@@ -586,6 +598,34 @@ public class DB<T> implements Closeable {
                 .filter(Objects::nonNull)
                 .filter(e -> ids.contains(funcGetId.apply(e)))
                 .collect(Collectors.toList());
+    }
+
+    private List<List<IndexElement>> batchElements(List<IndexElement> indexElementList) {
+        if (indexElementList.isEmpty())
+            return new ArrayList<>();
+
+        IndexElement min = indexElementList.stream()
+                .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
+                .min(Comparator.comparingLong(IndexElement::getPosition))
+                .orElse(null);
+        IndexElement max = indexElementList.stream()
+                .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
+                .max(Comparator.comparingLong(IndexElement::getPosition))
+                .orElse(null);
+        int maxSize = Integer.MAX_VALUE - 10;
+        if (min != null && max != null) {
+            long size = max.getPosition() + max.getSize() - min.getPosition();
+            if (size < 0)
+                return new ArrayList<>();
+
+            int count = (int) size / maxSize + 1;
+            int batchSize = indexElementList.size() / count;
+            List<List<IndexElement>> result = new LinkedList<>();
+            for (int i = 0; i < indexElementList.size(); i += batchSize)
+                result.add(indexElementList.subList(i, Math.min(i + batchSize, indexElementList.size())));
+            return result;
+        }
+        return new ArrayList<>();
     }
 
     /**
