@@ -104,7 +104,6 @@ class Index {
     }
 
     void removeElements(int startId, int count) {
-        long positionInDataFile = this.getElements().get(startId).getPosition();
         for (int i = 0; i < count; i++)
             getElements().remove(startId);
         updateIndex();
