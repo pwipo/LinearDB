@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class DBTest {
 
-    private static DB<TestElement> db;
+    private static DB<ElementTest> db;
 
     @BeforeAll
     public static void onlyOnce() throws IOException {
@@ -20,12 +20,12 @@ public class DBTest {
                 new File("linerdb"),
                 "db",
                 1,
-                TestElement::fromByte,
-                TestElement::toByte,
-                TestElement::getId,
-                TestElement::setId,
-                TestElement::getDate,
-                TestElement::setDate,
+                ElementTest::fromByte,
+                ElementTest::toByte,
+                ElementTest::getId,
+                ElementTest::setId,
+                ElementTest::getDate,
+                ElementTest::setDate,
                 0,
                 null,
                 null,
@@ -50,10 +50,10 @@ public class DBTest {
     public void saveAll() throws IOException {
         AtomicLong idGenerator = new AtomicLong(0);
         long currentTimeMillis = System.currentTimeMillis();
-        List<TestElement> elements = db.save(List.of(
-                new TestElement(idGenerator.incrementAndGet(), 1, 2, currentTimeMillis)
-                , new TestElement(idGenerator.incrementAndGet(), 3, 4, currentTimeMillis)
-                , new TestElement(null, 5, 6, currentTimeMillis)
+        List<ElementTest> elements = db.save(List.of(
+                new ElementTest(idGenerator.incrementAndGet(), 1, 2, currentTimeMillis)
+                , new ElementTest(idGenerator.incrementAndGet(), 3, 4, currentTimeMillis)
+                , new ElementTest(null, 5, 6, currentTimeMillis)
         ));
         Assertions.assertEquals(3, elements.size());
         elements.forEach(System.out::println);
@@ -62,8 +62,8 @@ public class DBTest {
     @Test
     @Order(2)
     public void add() throws IOException {
-        List<TestElement> elements = db.save(List.of(
-                new TestElement(null, 7, 8, null)
+        List<ElementTest> elements = db.save(List.of(
+                new ElementTest(null, 7, 8, null)
         ));
         Assertions.assertEquals(1, elements.size());
         elements.forEach(System.out::println);
@@ -72,7 +72,7 @@ public class DBTest {
     @Test
     @Order(3)
     public void getAll() {
-        List<TestElement> all = db.getAll();
+        List<ElementTest> all = db.getAll();
         Assertions.assertTrue(all.size() >= 4);
         all.forEach(System.out::println);
     }
@@ -80,7 +80,7 @@ public class DBTest {
     @Test
     @Order(4)
     public void getById() {
-        Optional<TestElement> byId = db.findById(1L);
+        Optional<ElementTest> byId = db.findById(1L);
         Assertions.assertTrue(byId.isPresent());
         byId.ifPresent(System.out::println);
     }
@@ -88,7 +88,7 @@ public class DBTest {
     @Test
     @Order(5)
     public void findByIdInRange() {
-        List<TestElement> elements = db.findByIdInRange(db.getMinId(), db.getMaxId());
+        List<ElementTest> elements = db.findByIdInRange(db.getMinId(), db.getMaxId());
         Assertions.assertFalse(elements.isEmpty());
         Assertions.assertTrue(elements.size() > 2);
         elements.forEach(System.out::println);
@@ -97,7 +97,7 @@ public class DBTest {
     @Test
     @Order(6)
     public void findByDateInRange() {
-        List<TestElement> elements = db.findByDateInRange(db.getMinDate(), db.getMaxDate());
+        List<ElementTest> elements = db.findByDateInRange(db.getMinDate(), db.getMaxDate());
         Assertions.assertFalse(elements.isEmpty());
         Assertions.assertTrue(elements.size() >= 3);
         elements.forEach(System.out::println);
@@ -106,7 +106,7 @@ public class DBTest {
     @Test
     @Order(7)
     public void findByPositionInRange() {
-        List<TestElement> elements = db.findByPositionInRange(1, 3);
+        List<ElementTest> elements = db.findByPositionInRange(1, 3);
         Assertions.assertFalse(elements.isEmpty());
         elements.forEach(System.out::println);
     }
@@ -115,8 +115,8 @@ public class DBTest {
     @Order(8)
     public void delete() throws IOException {
         long maxId = db.getMaxId();
-        List<TestElement> elements = db.save(List.of(
-                new TestElement(maxId + 1, 7, 8, System.currentTimeMillis())
+        List<ElementTest> elements = db.save(List.of(
+                new ElementTest(maxId + 1, 7, 8, System.currentTimeMillis())
         ));
         Assertions.assertEquals(1, elements.size());
         elements.forEach(System.out::println);
@@ -124,7 +124,7 @@ public class DBTest {
         boolean delete = db.delete(maxId);
         Assertions.assertTrue(delete);
 
-        List<TestElement> all = db.getAll();
+        List<ElementTest> all = db.getAll();
         Assertions.assertTrue(all.size() >= 3);
         all.forEach(System.out::println);
     }
@@ -139,7 +139,7 @@ public class DBTest {
         Integer count = db.deleteByIdLessThen(idsByDateInRange.get(idsByDateInRange.size() - 1));
         Assertions.assertTrue(count >= 1);
 
-        List<TestElement> all = db.getAll();
+        List<ElementTest> all = db.getAll();
         Assertions.assertTrue(maxDate - minDate < 1000 || all.size() >= 1);
         all.forEach(System.out::println);
     }

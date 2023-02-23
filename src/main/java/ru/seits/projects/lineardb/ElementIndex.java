@@ -3,7 +3,7 @@ package ru.seits.projects.lineardb;
 import java.util.List;
 
 //bytes: 4+2*8
-class IndexElement {
+class ElementIndex {
     private int size;
     private long position;
     private long id;
@@ -13,7 +13,7 @@ class IndexElement {
     private Long positionInLog;
     private int version;
 
-    IndexElement(int size, long position, long id, long date, List<Object> additionalData, Integer sizeInLog, Long positionInLog, int version) {
+    ElementIndex(int size, long position, long id, long date, List<Object> additionalData, Integer sizeInLog, Long positionInLog, int version) {
         this.size = size;
         this.position = position;
         this.id = id;
@@ -24,16 +24,16 @@ class IndexElement {
         this.version = version;
     }
 
-    IndexElement(IndexElement indexElement, IndexElement indexElementNew) {
+    ElementIndex(ElementIndex elementIndex, ElementIndex elementIndexNew) {
         this(
-                indexElement != null ? indexElement.getSize() : 0,
-                indexElement != null ? indexElement.getPosition() : 0,
-                indexElementNew.getId(),
-                indexElementNew.getDate(),
-                indexElementNew.getAdditionalData(),
-                indexElementNew.getSizeInLog(),
-                indexElementNew.getPositionInLog(),
-                indexElementNew.version
+                elementIndex != null ? elementIndex.getSize() : 0,
+                elementIndex != null ? elementIndex.getPosition() : 0,
+                elementIndexNew.getId(),
+                elementIndexNew.getDate(),
+                elementIndexNew.getAdditionalData(),
+                elementIndexNew.getSizeInLog(),
+                elementIndexNew.getPositionInLog(),
+                elementIndexNew.version
         );
     }
 

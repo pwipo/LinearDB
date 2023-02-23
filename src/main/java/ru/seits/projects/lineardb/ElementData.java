@@ -2,12 +2,12 @@ package ru.seits.projects.lineardb;
 
 import java.util.Objects;
 
-class DataElement<T> {
+class ElementData<T> {
     private long id;
     private long date;
     private T data;
 
-    DataElement(long id, long date, T data) {
+    ElementData(long id, long date, T data) {
         this.id = id;
         this.date = date;
         this.data = data;
@@ -41,7 +41,7 @@ class DataElement<T> {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        DataElement<?> element = (DataElement<?>) o;
+        ElementData<?> element = (ElementData<?>) o;
         return id == element.id;
     }
 

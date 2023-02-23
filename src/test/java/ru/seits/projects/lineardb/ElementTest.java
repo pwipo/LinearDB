@@ -6,13 +6,13 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.Objects;
 
-class TestElement {
+class ElementTest {
     private Long id;
     private int x;
     private int y;
     private Long date;
 
-    TestElement(Long id, int x, int y, Long date) {
+    ElementTest(Long id, int x, int y, Long date) {
         this.id = id;
         this.x = x;
         this.y = y;
@@ -34,7 +34,7 @@ class TestElement {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        TestElement that = (TestElement) o;
+        ElementTest that = (ElementTest) o;
         return id == that.id;
     }
 
@@ -43,15 +43,15 @@ class TestElement {
         return Objects.hash(id);
     }
 
-    public static TestElement fromByte(Integer ver, byte[] bytes) {
+    public static ElementTest fromByte(Integer ver, byte[] bytes) {
         try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes); DataInputStream dis = new DataInputStream(bais)) {
-            return new TestElement(dis.readLong(), dis.readInt(), dis.readInt(), dis.readLong());
+            return new ElementTest(dis.readLong(), dis.readInt(), dis.readInt(), dis.readLong());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static byte[] toByte(Integer ver, TestElement obj) {
+    public static byte[] toByte(Integer ver, ElementTest obj) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
             dos.writeLong(obj.id);
             dos.writeInt(obj.x);

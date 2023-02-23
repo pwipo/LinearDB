@@ -9,10 +9,10 @@ class Index {
     private long maxId;
     private long maxDate;
 
-    private LinkedList<IndexElement> elements;
+    private LinkedList<ElementIndex> elements;
     private int version;
 
-    Index(List<IndexElement> elements, int version) {
+    Index(List<ElementIndex> elements, int version) {
         saveAllNew(elements);
         this.version = version;
     }
@@ -49,7 +49,7 @@ class Index {
         this.maxDate = maxDate;
     }
 
-    LinkedList<IndexElement> getElements() {
+    LinkedList<ElementIndex> getElements() {
         return elements;
     }
 
@@ -57,9 +57,9 @@ class Index {
         return version;
     }
 
-    <T> void saveElement(DataElement<T> element, List<Object> additionalData, int size, long position) {
-        IndexElement indexElement = this.getElements().stream().filter(e -> e.getId() == element.getId()).findAny().orElse(null);
-        if (indexElement == null) {
+    <T> void saveElement(ElementData<T> element, List<Object> additionalData, int size, long position) {
+        ElementIndex elementIndex = this.getElements().stream().filter(e -> e.getId() == element.getId()).findAny().orElse(null);
+        if (elementIndex == null) {
             if (this.getElements().isEmpty()) {
                 this.minId = element.getId();
                 this.minDate = element.getDate();
@@ -74,16 +74,16 @@ class Index {
                 nextPosition = indexElement.getPosition() + indexElement.getSize();
             }
             */
-            this.getElements().add(new IndexElement(0, 0, element.getId(), element.getDate(), additionalData, size, position, version));
+            this.getElements().add(new ElementIndex(0, 0, element.getId(), element.getDate(), additionalData, size, position, version));
         } else {
-            indexElement.setSizeInLog(size);
-            indexElement.setPositionInLog(position);
-            indexElement.setAdditionalData(additionalData);
-            indexElement.setDate(element.getDate());
+            elementIndex.setSizeInLog(size);
+            elementIndex.setPositionInLog(position);
+            elementIndex.setAdditionalData(additionalData);
+            elementIndex.setDate(element.getDate());
         }
     }
 
-    public void saveAllNew(List<IndexElement> elements) {
+    public void saveAllNew(List<ElementIndex> elements) {
         this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
         this.minId = !this.elements.isEmpty() ? elements.get(0).getId() : 0L;
         this.minDate = !this.elements.isEmpty() ? elements.get(0).getDate() : 0L;
@@ -117,10 +117,10 @@ class Index {
             startPosition += indexElement.getSize();
         }
         */
-        setMinId(getElements().stream().mapToLong(IndexElement::getId).min().orElse(0));
-        setMinDate(getElements().stream().mapToLong(IndexElement::getDate).min().orElse(0));
-        setMaxId(getElements().stream().mapToLong(IndexElement::getId).max().orElse(0));
-        setMaxDate(getElements().stream().mapToLong(IndexElement::getDate).max().orElse(0));
+        setMinId(getElements().stream().mapToLong(ElementIndex::getId).min().orElse(0));
+        setMinDate(getElements().stream().mapToLong(ElementIndex::getDate).min().orElse(0));
+        setMaxId(getElements().stream().mapToLong(ElementIndex::getId).max().orElse(0));
+        setMaxDate(getElements().stream().mapToLong(ElementIndex::getDate).max().orElse(0));
     }
 
 }
