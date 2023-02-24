@@ -43,7 +43,7 @@ class ElementTest {
         return Objects.hash(id);
     }
 
-    public static ElementTest fromByte(Integer ver, byte[] bytes, String dbName) {
+    public static ElementTest fromByte(Integer ver, byte[] bytes) {
         try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes); DataInputStream dis = new DataInputStream(bais)) {
             return new ElementTest(dis.readLong(), dis.readInt(), dis.readInt(), dis.readLong());
         } catch (Exception e) {
