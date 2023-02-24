@@ -49,7 +49,7 @@ public class DB<T> implements Closeable {
     private RandomAccessFile rafData;
     private RandomAccessFile rafLog;
     private RandomAccessFile rafLock;
-    private final BiFunction<Integer, byte[], T> funcConverter;
+    private final IObjectBuilder<T> funcConverter;
     private final BiFunction<Integer, T, byte[]> funcReverseConverter;
     private final Function<T, Long> funcGetId;
     private final BiConsumer<T, Long> funcSetId;
@@ -78,7 +78,7 @@ public class DB<T> implements Closeable {
             File folder
             , String dbName
             , int version
-            , BiFunction<Integer, byte[], T> funcConverter
+            , IObjectBuilder<T> funcConverter
             , BiFunction<Integer, T, byte[]> funcReverseConverter
             , Function<T, Long> funcGetId
             , BiConsumer<T, Long> funcSetId
@@ -318,7 +318,7 @@ public class DB<T> implements Closeable {
                     rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
                     rafIn.readFully(data);
                     if (elementIndex.getVersion() != getVersion() && elementIndex.getPositionInLog() == null && elementIndex.getSizeInLog() == null) {
-                        T obj = funcConverter.apply(elementIndex.getVersion(), data);
+                        T obj = funcConverter.apply(elementIndex.getVersion(), data, dbName);
                         if (obj != null)
                             data = funcReverseConverter.apply(getVersion(), obj);
                         if (data == null)
@@ -719,7 +719,7 @@ public class DB<T> implements Closeable {
             int b = rafIn.read(data);
             if (b != data.length)
                 throw new Exception("wrong element size. index damaged.");
-            return funcConverter.apply(e.getPositionInLog() != null ? getVersion() : e.getVersion(), data);
+            return funcConverter.apply(e.getPositionInLog() != null ? getVersion() : e.getVersion(), data, dbName);
             // for back compatibility
             // if (funcGetId.apply(element) != e.getId())
             //     throw new RuntimeException(String.format("wrong data: need id %d but get %s", e.getId(), funcGetId.apply(element)));
@@ -737,7 +737,7 @@ public class DB<T> implements Closeable {
                 throw new RuntimeException("wrong element size. index damaged.");
             byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
             System.arraycopy(dataStorage, position + DATA_FILE_ELEMENT_HEADER_LENGTH, data, 0, data.length);
-            return funcConverter.apply(version, data);
+            return funcConverter.apply(version, data, dbName);
         } catch (Exception ex) {
             // throw new RuntimeException("error", ex);
             ex.printStackTrace();
@@ -941,7 +941,7 @@ public class DB<T> implements Closeable {
 
     synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes, int version) throws IOException {
         //check consistent
-        if (funcConverter.apply(getVersion(), bytes) == null)
+        if (funcConverter.apply(getVersion(), bytes, dbName) == null)
             throw new IllegalArgumentException("wrong data");
         byte[] additional = null;
         if (additionalData != null)
@@ -957,7 +957,7 @@ public class DB<T> implements Closeable {
 
     synchronized private void writeElementToLog(DataOutputStream dos, byte type, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
         //check consistent
-        if (bytes != null && funcConverter.apply(getVersion(), bytes) == null)
+        if (bytes != null && funcConverter.apply(getVersion(), bytes, dbName) == null)
             throw new IllegalArgumentException("wrong data");
         byte[] additional = null;
         if (additionalData != null)
