@@ -26,7 +26,7 @@ public class DBTest {
                 ElementTest::setId,
                 ElementTest::getDate,
                 ElementTest::setDate,
-                0,
+                null,
                 null,
                 null,
                 null

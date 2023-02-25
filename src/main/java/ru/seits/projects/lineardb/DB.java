@@ -4,8 +4,8 @@ import java.io.*;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -37,7 +37,7 @@ public class DB<T> implements Closeable {
     private final static int DATA_FILE_HEADER_LENGTH = 4;
     private final static int DATA_FILE_ELEMENT_HEADER_LENGTH = 4;
     private final static int LOG_FILE_HEADER_LENGTH = 4;
-    private final static int LOG_FILE_ELEMENT_HEADER_LENGTH = 1 + INDEX_FILE_ELEMENT_LENGTH;
+    public final static int LOG_FILE_ELEMENT_HEADER_LENGTH = 1 + INDEX_FILE_ELEMENT_LENGTH;
 
     private final static byte LOG_ELEMENT_TYPE_SAVE = 1;
     private final static byte LOG_ELEMENT_TYPE_DELETE = 2;
@@ -56,12 +56,13 @@ public class DB<T> implements Closeable {
     private final Function<T, Long> funcGetDate;
     private final BiConsumer<T, Long> funcSetDate;
 
-    private final int indexFileElementLength;
-    private final int countAdditionalBytesInIndex;
+    private final int countAdditionalBytes;
+    // private final int indexFileElementLength;
     private final int logFileElementHeaderLength;
+    private final Function<Integer, Integer> funcCountAdditionalBytes;
     private final BiFunction<Integer, byte[], List<Object>> funcIndexAdditionalDataConverter;
     private final BiFunction<Integer, List<Object>, byte[]> funcIndexAdditionalDataReverseConverter;
-    private final Function<T, List<Object>> funcIndexGetAdditionalData;
+    private final BiFunction<Integer, T, List<Object>> funcIndexGetAdditionalData;
 
     private Index index;
 
@@ -84,10 +85,10 @@ public class DB<T> implements Closeable {
             , BiConsumer<T, Long> funcSetId
             , Function<T, Long> funcGetDate
             , BiConsumer<T, Long> funcSetDate
-            , int countAdditionalBytesInIndex
+            , Function<Integer, Integer> funcCountAdditionalBytes
             , BiFunction<Integer, byte[], List<Object>> funcIndexAdditionalDataConverter
             , BiFunction<Integer, List<Object>, byte[]> funcIndexAdditionalDataReverseConverter
-            , Function<T, List<Object>> funcIndexGetAdditionalData
+            , BiFunction<Integer, T, List<Object>> funcIndexGetAdditionalData
     ) {
         Objects.requireNonNull(folder);
         Objects.requireNonNull(dbName);
@@ -97,10 +98,10 @@ public class DB<T> implements Closeable {
         Objects.requireNonNull(funcSetId);
         Objects.requireNonNull(funcGetDate);
         Objects.requireNonNull(funcSetDate);
-        if (countAdditionalBytesInIndex > 0 &&
+        if (funcCountAdditionalBytes != null &&
                 (funcIndexAdditionalDataConverter == null || funcIndexAdditionalDataReverseConverter == null || funcIndexGetAdditionalData == null))
             throw new NullPointerException();
-        if (countAdditionalBytesInIndex <= 0 &&
+        if (funcCountAdditionalBytes == null &&
                 (funcIndexAdditionalDataConverter != null || funcIndexAdditionalDataReverseConverter != null || funcIndexGetAdditionalData != null))
             throw new IllegalArgumentException();
 
@@ -117,9 +118,10 @@ public class DB<T> implements Closeable {
         this.funcSetId = funcSetId;
         this.funcGetDate = funcGetDate;
         this.funcSetDate = funcSetDate;
-        this.indexFileElementLength = INDEX_FILE_ELEMENT_LENGTH + countAdditionalBytesInIndex;
-        this.countAdditionalBytesInIndex = countAdditionalBytesInIndex;
-        this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + countAdditionalBytesInIndex;
+        this.countAdditionalBytes = funcCountAdditionalBytes != null ? funcCountAdditionalBytes.apply(version) : 0;
+        // this.indexFileElementLength = INDEX_FILE_ELEMENT_LENGTH + countAdditionalBytes;
+        this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + countAdditionalBytes;
+        this.funcCountAdditionalBytes = funcCountAdditionalBytes;
         this.funcIndexAdditionalDataConverter = funcIndexAdditionalDataConverter;
         this.funcIndexAdditionalDataReverseConverter = funcIndexAdditionalDataReverseConverter;
         this.funcIndexGetAdditionalData = funcIndexGetAdditionalData;
@@ -202,6 +204,7 @@ public class DB<T> implements Closeable {
         if (length > 0 && lengthData > 0) {
             rafIndex.seek(0);
             int versionIndex = rafIndex.readInt();
+            int countAdditionalBytesIndex = funcCountAdditionalBytes != null ? funcCountAdditionalBytes.apply(versionIndex) : 0;
             // long minId = rafIndex.readLong();
             // long minDate = rafIndex.readLong();
             // long maxId = rafIndex.readLong();
@@ -215,7 +218,7 @@ public class DB<T> implements Closeable {
                 //     // rafData.setLength(positionInDataFile);
                 //     break;
                 // }
-                ElementIndex elementIndex = readIndexElement(rafIndex, positionInDataFile, countAdditionalBytesInIndex, versionIndex);
+                ElementIndex elementIndex = readIndexElement(rafIndex, positionInDataFile, countAdditionalBytesIndex, versionIndex);
                 sizes.add(elementIndex);
                 positionInDataFile += elementIndex.getSize();
             }
@@ -254,13 +257,14 @@ public class DB<T> implements Closeable {
 
     synchronized private Index buildIndexFromLog() throws IOException {
         int ver = rafLog.readInt();
+        int countAdditionalBytesIndex = funcCountAdditionalBytes != null ? funcCountAdditionalBytes.apply(ver) : 0;
         long length = rafLog.length();
         Map<Long, ElementIndex> lastInLog = new HashMap<>();
         while (length > rafLog.getFilePointer()) {
             byte type = rafLog.readByte();
             ElementIndex elementIndex = null;
             if (LOG_ELEMENT_TYPE_SAVE == type) {
-                elementIndex = readIndexElement(rafLog, -1, countAdditionalBytesInIndex, ver);
+                elementIndex = readIndexElement(rafLog, -1, countAdditionalBytesIndex, ver);
                 elementIndex.setPositionInLog(elementIndex.getPosition());
                 elementIndex.setSizeInLog(elementIndex.getSize());
                 if (elementIndex.getSize() > 0) {
@@ -317,15 +321,17 @@ public class DB<T> implements Closeable {
                     byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
                     rafIn.seek(position + DATA_FILE_ELEMENT_HEADER_LENGTH);
                     rafIn.readFully(data);
+                    List<Object> additionalData = elementIndex.getAdditionalData();
                     if (elementIndex.getVersion() != getVersion() && elementIndex.getPositionInLog() == null && elementIndex.getSizeInLog() == null) {
                         T obj = funcConverter.apply(elementIndex.getVersion(), data);
                         if (obj != null)
                             data = funcReverseConverter.apply(getVersion(), obj);
                         if (data == null)
                             continue;
+                        additionalData = funcIndexGetAdditionalData.apply(getVersion(), obj);
                     }
 
-                    writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), elementIndex.getAdditionalData(), data, elementIndex.getVersion());
+                    writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), additionalData, data);
                     elementIndices.add(elementIndex);
                 } catch (Exception e) {
                     //if error - not stop operation
@@ -643,7 +649,7 @@ public class DB<T> implements Closeable {
      * @param filter Predicate
      * @return list of elements
      */
-    synchronized public List<T> findByFilter(Predicate<List<Object>> filter) {
+    synchronized public List<T> findByFilter(BiPredicate<Integer, List<Object>> filter) {
         return fastRead(findByFilterPrivate(filter).collect(Collectors.toList()));
     }
 
@@ -655,21 +661,22 @@ public class DB<T> implements Closeable {
      * @param filter Predicate
      * @return list of element ids
      */
-    synchronized public List<Long> findIdsByFilter(Predicate<List<Object>> filter) {
+    synchronized public List<Long> findIdsByFilter(BiPredicate<Integer, List<Object>> filter) {
         return findByFilterPrivate(filter)
                 .map(ElementIndex::getId)
                 .collect(Collectors.toList());
     }
 
-    synchronized private Stream<ElementIndex> findByFilterPrivate(Predicate<List<Object>> filter) {
+    synchronized private Stream<ElementIndex> findByFilterPrivate(BiPredicate<Integer, List<Object>> filter) {
         Objects.requireNonNull(filter);
         return index.getElements().stream()
                 .filter(e -> {
-                    ArrayList<Object> arrayList = new ArrayList<>(e.getAdditionalData().size() + 2);
+                    ArrayList<Object> arrayList = new ArrayList<>((e.getAdditionalData() != null ? e.getAdditionalData().size() : 0) + 2);
                     arrayList.add(e.getId());
                     arrayList.add(e.getDate());
-                    arrayList.addAll(e.getAdditionalData());
-                    return filter.test(arrayList);
+                    if (e.getAdditionalData() != null)
+                        arrayList.addAll(e.getAdditionalData());
+                    return filter.test(e.getVersion(), arrayList);
                 });
     }
 
@@ -681,12 +688,16 @@ public class DB<T> implements Closeable {
      * @param filter Predicate
      * @return list of elements
      */
-    synchronized public List<T> findByDataFilter(Predicate<T> filter) {
+    synchronized public List<T> findByDataFilter(BiPredicate<Integer, T> filter) {
         Objects.requireNonNull(filter);
         return index.getElements().stream()
-                .map(this::readElement)
+                .map(e -> {
+                    T t = readElement(e);
+                    return t != null ? Map.entry(e, t) : null;
+                })
                 .filter(Objects::nonNull)
-                .filter(filter)
+                .filter(e -> filter.test(e.getKey().getVersion(), e.getValue()))
+                .map(Map.Entry::getValue)
                 .collect(Collectors.toList());
     }
 
@@ -699,12 +710,16 @@ public class DB<T> implements Closeable {
      * @param filter Predicate
      * @return list of element ids
      */
-    synchronized public List<Long> findIdsByDataFilter(Predicate<T> filter) {
+    synchronized public List<Long> findIdsByDataFilter(BiPredicate<Integer, T> filter) {
         Objects.requireNonNull(filter);
         return index.getElements().stream()
-                .map(this::readElement)
+                .map(e -> {
+                    T t = readElement(e);
+                    return t != null ? Map.entry(e, t) : null;
+                })
                 .filter(Objects::nonNull)
-                .filter(filter)
+                .filter(e -> filter.test(e.getKey().getVersion(), e.getValue()))
+                .map(Map.Entry::getValue)
                 .map(funcGetId)
                 .collect(Collectors.toList());
     }
@@ -907,7 +922,7 @@ public class DB<T> implements Closeable {
                 int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
                 List<Object> additionalData = null;
                 if (funcIndexAdditionalDataReverseConverter != null && funcIndexGetAdditionalData != null)
-                    additionalData = funcIndexGetAdditionalData.apply(data);
+                    additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
                 writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
 
                 elements.add(elementData.getData());
@@ -939,7 +954,7 @@ public class DB<T> implements Closeable {
         index.removeElements(startPosition, count);
     }
 
-    synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes, int version) throws IOException {
+    synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
         //check consistent
         if (funcConverter.apply(getVersion(), bytes) == null)
             throw new IllegalArgumentException("wrong data");

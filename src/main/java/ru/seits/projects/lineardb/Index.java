@@ -10,7 +10,7 @@ class Index {
     private long maxDate;
 
     private LinkedList<ElementIndex> elements;
-    private int version;
+    private final int version;
 
     Index(List<ElementIndex> elements, int version) {
         saveAllNew(elements);
