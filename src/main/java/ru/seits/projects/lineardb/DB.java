@@ -303,7 +303,7 @@ public class DB<T> implements Closeable {
     }
 
     synchronized private void applyLog(Index index, boolean reinit) throws IOException {
-        if (!isOpen() || rafLog.length() == 0)
+        if (!isOpen() || rafLog.length() <= LOG_FILE_HEADER_LENGTH)
             return;
         clearTmpFiles();
         try (RandomAccessFile rafIndexNew = new RandomAccessFile(indexFileNew, "rw"); RandomAccessFile rafDataNew = new RandomAccessFile(dataFileNew, "rw")) {
