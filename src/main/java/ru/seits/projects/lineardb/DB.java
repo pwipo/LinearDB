@@ -328,7 +328,8 @@ public class DB<T> implements Closeable {
                             data = funcReverseConverter.apply(getVersion(), obj);
                         if (data == null)
                             continue;
-                        additionalData = funcIndexGetAdditionalData.apply(getVersion(), obj);
+                        if (funcIndexGetAdditionalData != null)
+                            additionalData = funcIndexGetAdditionalData.apply(getVersion(), obj);
                     }
 
                     writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), additionalData, data);
@@ -921,7 +922,7 @@ public class DB<T> implements Closeable {
 
                 int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
                 List<Object> additionalData = null;
-                if (funcIndexAdditionalDataReverseConverter != null && funcIndexGetAdditionalData != null)
+                if (funcIndexGetAdditionalData != null)
                     additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
                 writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
 
@@ -959,7 +960,7 @@ public class DB<T> implements Closeable {
         if (funcConverter.apply(getVersion(), bytes) == null)
             throw new IllegalArgumentException("wrong data");
         byte[] additional = null;
-        if (additionalData != null)
+        if (additionalData != null && funcIndexAdditionalDataReverseConverter != null)
             additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
         rafData.writeInt(bytes.length);
         rafData.write(bytes);
@@ -975,7 +976,7 @@ public class DB<T> implements Closeable {
         if (bytes != null && funcConverter.apply(getVersion(), bytes) == null)
             throw new IllegalArgumentException("wrong data");
         byte[] additional = null;
-        if (additionalData != null)
+        if (additionalData != null && funcIndexAdditionalDataReverseConverter != null)
             additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
         dos.writeByte(type);
         dos.writeInt(elementSize);
