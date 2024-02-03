@@ -2,6 +2,7 @@ package ru.seits.projects.lineardb;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 
 class Index {
     private long minId;
@@ -57,8 +58,12 @@ class Index {
         return version;
     }
 
+    Optional<ElementIndex> findOne(Long id) {
+        return this.getElements().stream().filter(e -> e.getId() == id).findAny();
+    }
+
     <T> void saveElement(ElementData<T> element, List<Object> additionalData, int size, long position) {
-        ElementIndex elementIndex = this.getElements().stream().filter(e -> e.getId() == element.getId()).findAny().orElse(null);
+        ElementIndex elementIndex = findOne(element.getId()).orElse(null);
         if (elementIndex == null) {
             if (this.getElements().isEmpty()) {
                 this.minId = element.getId();

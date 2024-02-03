@@ -915,21 +915,27 @@ public class DB<T> implements Closeable {
                 }
 
                 byte[] bytes = funcReverseConverter.apply(getVersion(), data);
-                ElementData<T> elementData = new ElementData<>(
-                        elementId,
-                        elementDate,
-                        data);
+                if (bytes != null) {
+                    ElementData<T> elementData = new ElementData<>(
+                            elementId,
+                            elementDate,
+                            data);
 
-                int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
-                List<Object> additionalData = null;
-                if (funcIndexGetAdditionalData != null)
-                    additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
-                writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
+                    int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
+                    List<Object> additionalData = null;
+                    if (funcIndexGetAdditionalData != null)
+                        additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
+                    writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
 
-                elements.add(elementData.getData());
-                position += logFileElementHeaderLength;
-                index.saveElement(elementData, additionalData, elementSize, position);
-                position += elementSize;
+                    elements.add(elementData.getData());
+                    position += logFileElementHeaderLength;
+                    index.saveElement(elementData, additionalData, elementSize, position);
+                    position += elementSize;
+                } else {
+                    Optional<ElementIndex> elementIndexOpt = index.findOne(elementId);
+                    if (elementIndexOpt.isPresent())
+                        writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, elementIndexOpt.get().getId(), System.currentTimeMillis(), null, null);
+                }
             }
             dos.flush();
             rafLog.write(baos.toByteArray());
