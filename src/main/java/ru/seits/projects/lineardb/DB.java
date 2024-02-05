@@ -564,7 +564,7 @@ public class DB<T> implements Closeable {
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
                 .collect(Collectors.toList());
         long minPosition = 0;
-        if (elementsInData.size() > (elementIndexList.size() / 2)) {
+        if (data == null && elementsInData.size() > (elementIndexList.size() / 2)) {
             minPosition = elementsInData.stream()
                     .min(Comparator.comparingLong(ElementIndex::getPosition))
                     .map(ElementIndex::getPosition)
@@ -591,22 +591,33 @@ public class DB<T> implements Closeable {
                 .collect(Collectors.toList());
         byte[] dataTmp = data;
         long minPositionTmp = minPosition;
-        return elementIndexList.stream()
-                .map(e -> {
-                    long position = e.getPosition() - minPositionTmp;
-                    if (dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null && position >= 0 && position < dataTmp.length) {
-                        return readElement(dataTmp, (int) position, e.getSize(), e.getVersion());
-                        // for back compatibility
-                        // if (funcGetId.apply(element) != e.getId())
-                        //     throw new RuntimeException(String.format("wrong data: need id %d but get %s", e.getId(), funcGetId.apply(element)));
-                        // return element;
-                    } else {
-                        return readElement(e);
-                    }
-                })
-                .filter(Objects::nonNull)
-                .filter(e -> ids.contains(funcGetId.apply(e)))
-                .collect(Collectors.toList());
+        if (elementIndexList.stream().anyMatch(e -> {
+            long position = e.getPosition() - minPositionTmp;
+            return !(dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null && position >= 0 && position < dataTmp.length);
+        })) {
+            return elementIndexList.stream()
+                    .map(e -> {
+                        long position = e.getPosition() - minPositionTmp;
+                        if (dataTmp != null && e.getPositionInLog() == null && e.getSizeInLog() == null && position >= 0 && position < dataTmp.length) {
+                            return readElement(dataTmp, (int) position, e.getSize(), e.getVersion());
+                            // for back compatibility
+                            // if (funcGetId.apply(element) != e.getId())
+                            //     throw new RuntimeException(String.format("wrong data: need id %d but get %s", e.getId(), funcGetId.apply(element)));
+                            // return element;
+                        } else {
+                            return readElement(e);
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .filter(e -> ids.contains(funcGetId.apply(e)))
+                    .collect(Collectors.toList());
+        } else {
+            return elementIndexList.parallelStream()
+                    .map(e -> readElement(dataTmp, (int) (e.getPosition() - minPositionTmp), e.getSize(), e.getVersion()))
+                    .filter(Objects::nonNull)
+                    .filter(e -> ids.contains(funcGetId.apply(e)))
+                    .collect(Collectors.toList());
+        }
     }
 
     /**
@@ -746,7 +757,7 @@ public class DB<T> implements Closeable {
         }
     }
 
-    synchronized private T readElement(byte[] dataStorage, int position, int size, int version) {
+    private T readElement(byte[] dataStorage, int position, int size, int version) {
         try {
             if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
                 throw new RuntimeException("wrong element size. index damaged.");
