@@ -441,7 +441,7 @@ public class DB<T> implements Closeable {
      */
     synchronized public List<T> findByIdInRange(long minId, long maxId) {
         return fastRead(findIndexElementByIdInRange(minId, maxId)
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList()), null);
     }
 
     /**
@@ -478,7 +478,7 @@ public class DB<T> implements Closeable {
      */
     synchronized public List<T> findByDateInRange(long minDate, long maxDate) {
         return fastRead(findIndexElementByDateInRange(minDate, maxDate)
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList()), null);
     }
 
     /**
@@ -513,7 +513,7 @@ public class DB<T> implements Closeable {
      * @return list of Elements
      */
     synchronized public List<T> findByPositionInRange(int minPosition, int maxPosition) {
-        return fastRead(findIndexElementByPositionInRange(minPosition, maxPosition).collect(Collectors.toList()));
+        return fastRead(findIndexElementByPositionInRange(minPosition, maxPosition).collect(Collectors.toList()), null);
     }
 
     /**
@@ -554,16 +554,15 @@ public class DB<T> implements Closeable {
 
         int firstId = index.getElements().size() - count - 1;
 
-        return fastRead(index.getElements().subList(firstId, index.getElements().size()));
+        return fastRead(index.getElements().subList(firstId, index.getElements().size()), null);
     }
 
-    synchronized private List<T> fastRead(List<ElementIndex> elementIndexList) {
+    synchronized private List<T> fastRead(List<ElementIndex> elementIndexList, byte[] data) {
         if (elementIndexList.isEmpty())
             return new ArrayList<>();
         List<ElementIndex> elementsInData = elementIndexList.stream()
                 .filter(e -> e.getPositionInLog() == null && e.getSizeInLog() == null)
                 .collect(Collectors.toList());
-        byte[] data = null;
         long minPosition = 0;
         if (elementsInData.size() > (elementIndexList.size() / 2)) {
             minPosition = elementsInData.stream()
@@ -618,14 +617,14 @@ public class DB<T> implements Closeable {
     synchronized public List<T> getAll() {
         try {
             /*
-            byte[] data = new byte[(int) rafData.length()];
-            rafData.seek(0);
-            rafData.readFully(data);
             return index.getElements().stream()
                     .map(e -> readElement(data, (int) e.getPosition(), e.getSize()))
                     .collect(Collectors.toList());
             */
-            return fastRead(index.getElements());
+            byte[] data = new byte[(int) rafData.length()];
+            rafData.seek(0);
+            rafData.readFully(data);
+            return fastRead(index.getElements(), data);
         } catch (Exception e) {
             throw new RuntimeException("error", e);
         }
@@ -651,7 +650,7 @@ public class DB<T> implements Closeable {
      * @return list of elements
      */
     synchronized public List<T> findByFilter(BiPredicate<Integer, List<Object>> filter) {
-        return fastRead(findByFilterPrivate(filter).collect(Collectors.toList()));
+        return fastRead(findByFilterPrivate(filter).collect(Collectors.toList()), null);
     }
 
     /**
