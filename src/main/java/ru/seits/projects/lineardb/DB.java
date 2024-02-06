@@ -324,10 +324,11 @@ public class DB<T> implements Closeable {
                     List<Object> additionalData = elementIndex.getAdditionalData();
                     if (elementIndex.getVersion() != getVersion() && elementIndex.getPositionInLog() == null && elementIndex.getSizeInLog() == null) {
                         T obj = funcConverter.apply(elementIndex.getVersion(), data);
-                        if (obj != null)
-                            data = funcReverseConverter.apply(getVersion(), obj);
+                        if (obj == null)
+                            throw new InvalidObjectException("converter return null");
+                        data = funcReverseConverter.apply(getVersion(), obj);
                         if (data == null)
-                            continue;
+                            throw new InvalidObjectException("rev converter return null");
                         if (funcIndexGetAdditionalData != null)
                             additionalData = funcIndexGetAdditionalData.apply(getVersion(), obj);
                     }
@@ -760,7 +761,7 @@ public class DB<T> implements Closeable {
     private T readElement(byte[] dataStorage, int position, int size, int version) {
         try {
             if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
-                throw new RuntimeException("wrong element size. index damaged.");
+                throw new IllegalArgumentException("wrong element size. index damaged.");
             byte[] data = new byte[size - DATA_FILE_ELEMENT_HEADER_LENGTH];
             System.arraycopy(dataStorage, position + DATA_FILE_ELEMENT_HEADER_LENGTH, data, 0, data.length);
             return funcConverter.apply(version, data);
@@ -925,27 +926,23 @@ public class DB<T> implements Closeable {
                 }
 
                 byte[] bytes = funcReverseConverter.apply(getVersion(), data);
-                if (bytes != null) {
-                    ElementData<T> elementData = new ElementData<>(
-                            elementId,
-                            elementDate,
-                            data);
+                if (bytes == null)
+                    throw new InvalidObjectException("rev converter return null");
+                ElementData<T> elementData = new ElementData<>(
+                        elementId,
+                        elementDate,
+                        data);
 
-                    int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
-                    List<Object> additionalData = null;
-                    if (funcIndexGetAdditionalData != null)
-                        additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
-                    writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
+                int elementSize = DATA_FILE_ELEMENT_HEADER_LENGTH + bytes.length;
+                List<Object> additionalData = null;
+                if (funcIndexGetAdditionalData != null)
+                    additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
+                writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes);
 
-                    elements.add(elementData.getData());
-                    position += logFileElementHeaderLength;
-                    index.saveElement(elementData, additionalData, elementSize, position);
-                    position += elementSize;
-                } else {
-                    Optional<ElementIndex> elementIndexOpt = index.findOne(elementId);
-                    if (elementIndexOpt.isPresent())
-                        writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, elementIndexOpt.get().getId(), System.currentTimeMillis(), null, null);
-                }
+                elements.add(elementData.getData());
+                position += logFileElementHeaderLength;
+                index.saveElement(elementData, additionalData, elementSize, position);
+                position += elementSize;
             }
             dos.flush();
             rafLog.write(baos.toByteArray());
@@ -960,9 +957,8 @@ public class DB<T> implements Closeable {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
             long length = rafLog.length();
             rafLog.seek(length);
-            for (ElementIndex elementIndex : elementIndices) {
+            for (ElementIndex elementIndex : elementIndices)
                 writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, elementIndex.getId(), System.currentTimeMillis(), null, null);
-            }
             dos.flush();
             byte[] bytes = baos.toByteArray();
             rafLog.write(bytes);
