@@ -1078,4 +1078,24 @@ public class DB<T> implements Closeable {
         new File(folder, dbName + "." + EXTENSION_LOG).delete();
     }
 
+    public Optional<T> findOneByStringIndexKey(String key, int indexId) {
+        Objects.requireNonNull(key);
+        int id = 2 + indexId;
+        return findByFilter((ver, list) -> list.size() > id && Objects.equals(list.get(id).toString().stripTrailing(), key)).stream()
+                .findFirst();
+    }
+
+    public Optional<T> findOneByStringIndexKey(String key, int indexId, int maxFieldSize, Function<T, String> getter) {
+        if (key.length() <= maxFieldSize) {
+            return findOneByStringIndexKey(key, indexId);
+        } else {
+            Objects.requireNonNull(key);
+            Objects.requireNonNull(getter);
+            int id = 2 + indexId;
+            return findByFilter((ver, list) -> list.size() > id && key.startsWith(list.get(id).toString().stripTrailing())).stream()
+                    .filter(o -> Objects.equals(getter.apply(o), key))
+                    .findFirst();
+        }
+    }
+
 }
