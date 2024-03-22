@@ -153,17 +153,17 @@ public class DBTestStringKey {
     @Test
     @Order(8)
     public void findByName() {
-        Optional<Value> valueOptional = db.findOneByStringIndexKey("one", 0);
-        Assertions.assertFalse(valueOptional.isEmpty());
-        System.out.println(valueOptional.get());
-        valueOptional = db.findOneByStringIndexKey("two", 0);
-        Assertions.assertFalse(valueOptional.isEmpty());
-        System.out.println(valueOptional.get());
-        valueOptional = db.findOneByStringIndexKey("three_long_key", 0);
-        Assertions.assertFalse(valueOptional.isPresent());
-        valueOptional = db.findOneByStringIndexKey("three_long_key", 0, DB_INDEX_NAME_LENGTH, Value::getName);
-        Assertions.assertFalse(valueOptional.isEmpty());
-        System.out.println(valueOptional.get());
+        List<Value> values = db.findOneByStringIndexKey("one", 0);
+        Assertions.assertFalse(values.isEmpty());
+        System.out.println(values.get(0));
+        values = db.findOneByStringIndexKey("two", 0);
+        Assertions.assertFalse(values.isEmpty());
+        System.out.println(values.get(0));
+        values = db.findOneByStringIndexKey("three_long_key", 0);
+        Assertions.assertTrue(values.isEmpty());
+        values = db.findOneByStringIndexKey("three_long_key", 0, DB_INDEX_NAME_LENGTH, Value::getName);
+        Assertions.assertFalse(values.isEmpty());
+        System.out.println(values.get(0));
     }
 
     @Test

@@ -1,23 +1,22 @@
 # LinearDB
-Linear DB for many consecutive additions of records and no many reads
+Linear DB is convenient for many consecutive additions of records and no many reads.
 
-small linear db.
+Small linear db, has log file and index.
 
-has log file.
+Used for not big count of elements.
 
-used for not big count of elements.
+Db not have internal cache - read data operation always read file.
 
-db not have internal cache - read data operation always read file.
+Full index resident in memory.
 
-full index resident in memory.
-
-used log file for operations. it increase speed:
+Used log file for operations. It increases speed:
  * add elements
  * update elements
  * delete first n elements
  * delete element
  
-search operations slow down as the number of items increases.
+Search operations slow down as the number of items increases.
 
-each element mast have id (long) and date (long).
+Each element mast have id (long) and date (long).
 
+`
