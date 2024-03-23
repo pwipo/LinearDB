@@ -31,7 +31,16 @@ public class DBTestStringKey {
                 o -> o.getVersion() != null ? o.getVersion().getTime() : null,
                 (o, time) -> o.setVersion(new Date(time)),
                 (ver) -> ver > 0 ? DB_INDEX_NAME_BYTES_LENGTH : 0,
-                (ver, b) -> ver > 0 ? List.of(new String(b)) : List.of(),
+                (ver, b) -> {
+                    if (ver <= 0)
+                        return null;
+                    int endIndex = b.length - 1;
+                    while (endIndex > 0 && b[endIndex] == 0)
+                        endIndex--;
+                    byte[] bytes = new byte[endIndex + 1];
+                    System.arraycopy(b, 0, bytes, 0, bytes.length);
+                    return List.of(new String(bytes));
+                },
                 (ver, list) -> {
                     if (ver <= 0)
                         return null;
