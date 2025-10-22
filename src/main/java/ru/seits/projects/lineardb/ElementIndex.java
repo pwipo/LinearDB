@@ -3,7 +3,7 @@ package ru.seits.projects.lineardb;
 import java.util.List;
 
 //bytes: 4+2*8
-class ElementIndex {
+class ElementIndex implements IElement {
     private int size;
     private long position;
     private long id;
@@ -45,11 +45,13 @@ class ElementIndex {
         return position;
     }
 
-    long getId() {
+    @Override
+    public long getId() {
         return id;
     }
 
-    long getDate() {
+    @Override
+    public long getDate() {
         return date;
     }
 
@@ -57,7 +59,8 @@ class ElementIndex {
         this.date = date;
     }
 
-    List<Object> getAdditionalData() {
+    @Override
+    public List<Object> getAdditionalData() {
         return additionalData;
     }
 
@@ -81,7 +84,12 @@ class ElementIndex {
         this.positionInLog = positionInLog;
     }
 
+    @Override
     public int getVersion() {
         return version;
+    }
+
+    public int getRealSize() {
+        return getSizeInLog() != null ? getSizeInLog() : getSize();
     }
 }
