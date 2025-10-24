@@ -1156,4 +1156,9 @@ public class DB<T> implements Closeable {
         }
     }
 
+    public T get(IElement element) {
+        Objects.requireNonNull(element);
+        return readElement((ElementIndex) element);
+    }
+
 }
