@@ -1,6 +1,7 @@
 package ru.seits.projects.lineardb;
 
 import java.util.List;
+import java.util.Objects;
 
 //bytes: 4+2*8
 class ElementIndex implements IElement {
@@ -92,4 +93,17 @@ class ElementIndex implements IElement {
     public int getRealSize() {
         return getSizeInLog() != null ? getSizeInLog() : getSize();
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        ElementIndex that = (ElementIndex) o;
+        return id == that.id;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(id);
+    }
+
 }
