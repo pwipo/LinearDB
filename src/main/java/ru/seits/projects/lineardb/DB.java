@@ -963,8 +963,7 @@ public class DB<T> implements Closeable {
         return elements;
     }
 
-    synchronized private void operationDelete(int startPosition, int count) throws IOException {
-        List<ElementIndex> elementIndices = index.getElements().subList(startPosition, startPosition + count);
+    synchronized private void operationDelete(List<ElementIndex> elementIndices) throws IOException {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
             long length = rafLog.length();
             rafLog.seek(length);
@@ -975,7 +974,7 @@ public class DB<T> implements Closeable {
             rafLog.write(bytes);
             // rafLog.setLength(length + bytes.length);
         }
-        index.removeElements(startPosition, count);
+        index.removeElements(elementIndices);
     }
 
     synchronized private void writeElementDirect(RandomAccessFile rafIndex, RandomAccessFile rafData, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes) throws IOException {
@@ -1022,24 +1021,17 @@ public class DB<T> implements Closeable {
     synchronized public int deleteByIdLessThen(long id) throws IOException {
         if (getMinId() > id)
             return 0;
-        Integer indexElementId = null;
-        for (int i = 0; i < index.getElements().size(); i++) {
-            ElementIndex elementIndex = index.getElements().get(i);
-            if (elementIndex.getId() > id)
-                break;
-            indexElementId = i;
-        }
-        if (indexElementId == null)
+        List<ElementIndex> elementIndices = index.getElements().stream().filter(e -> e.getId() <= id).collect(Collectors.toList());
+        if (elementIndices.isEmpty())
             return 0;
 
         // IndexElement indexElement = index.getElements().get(indexElementId);
         // removeNBytes(rafData, 0, indexElement.getPosition() + indexElement.getSize());
         // removeNBytes(rafIndex, INDEX_FILE_HEADER_LENGTH, INDEX_FILE_HEADER_LENGTH + ((long) indexElementId * indexFileElementLength + indexFileElementLength));
-        int count = indexElementId + 1;
-        operationDelete(0, count);
+        operationDelete(elementIndices);
         // index.removeElements(0, count);
 
-        return count;
+        return elementIndices.size();
     }
 
     synchronized public boolean delete(long id) throws IOException {
@@ -1059,7 +1051,7 @@ public class DB<T> implements Closeable {
         // IndexElement indexElement = index.getElements().get(indexElementId);
         // removeNBytes(rafData, indexElement.getPosition(), indexElement.getPosition() + indexElement.getSize());
         // removeNBytes(rafIndex, INDEX_FILE_HEADER_LENGTH + ((long) indexElementId * indexFileElementLength), INDEX_FILE_HEADER_LENGTH + ((long) indexElementId * indexFileElementLength + indexFileElementLength));
-        operationDelete(indexElementId, 1);
+        operationDelete(List.of(index.getElements().get(indexElementId)));
         // index.removeElements(indexElementId, 1);
         return true;
     }
@@ -1156,9 +1148,14 @@ public class DB<T> implements Closeable {
         }
     }
 
-    public T get(IElement element) {
-        Objects.requireNonNull(element);
-        return readElement((ElementIndex) element);
+    public List<T> get(List<IElement> elements) {
+        Objects.requireNonNull(elements);
+        return fastRead((List<ElementIndex>) (List) elements, null);
+    }
+
+    public void delete(List<IElement> elements) throws IOException {
+        Objects.requireNonNull(elements);
+        operationDelete((List<ElementIndex>) (List) elements);
     }
 
 }
