@@ -163,7 +163,7 @@ public class DB<T> implements Closeable {
             rafData = null;
         }
         index = null;
-        clearTmpFiles();
+        clearTmpFiles(false);
         if (rafLock != null) {
             rafLock.close();
             rafLock = null;
@@ -175,7 +175,7 @@ public class DB<T> implements Closeable {
     synchronized public void open() throws IOException {
         if (isOpen())
             return;
-        clearTmpFiles();
+        clearTmpFiles(false);
         if (!lockFile.exists()) {
             try {
                 lockFile.createNewFile();
@@ -216,6 +216,32 @@ public class DB<T> implements Closeable {
                 positionInDataFile += elementIndex.getSize();
             }
             index = new Index(sizes, versionIndex);
+        } else if (length == 0 && lengthData > 0) {
+            initNewIndex(rafIndex);
+            rafData.seek(0);
+            int versionData = rafData.readInt();
+            rafData.seek(DATA_FILE_HEADER_LENGTH);
+            long position = DATA_FILE_HEADER_LENGTH;
+            long maxPosition = lengthData - DATA_FILE_ELEMENT_HEADER_LENGTH - 1;
+            LinkedHashMap<Long, ElementIndex> sizes = new LinkedHashMap<>();
+            while (position < maxPosition) {
+                int size = rafData.readInt();
+                T t = readElement(rafData, versionData, size);
+                ElementIndex elementIndex = new ElementIndex(
+                        DATA_FILE_ELEMENT_HEADER_LENGTH + size
+                        , position
+                        , funcGetId.apply(t)
+                        , funcGetDate.apply(t)
+                        , funcIndexGetAdditionalData != null ? funcIndexGetAdditionalData.apply(versionData, t) : null
+                        , null
+                        , null
+                        , versionData
+                );
+                sizes.put(elementIndex.getId(), elementIndex);
+                position += DATA_FILE_ELEMENT_HEADER_LENGTH + size;
+            }
+            index = new Index(sizes, versionData);
+            writeIndex(false);
         } else {
             index = initNewDB(rafIndex, rafData);
         }
@@ -302,7 +328,7 @@ public class DB<T> implements Closeable {
     synchronized private void applyLog(Index index, boolean reinit) throws IOException {
         if (!isOpen() || rafLog.length() <= LOG_FILE_HEADER_LENGTH)
             return;
-        clearTmpFiles();
+        clearTmpFiles(true);
         try (RandomAccessFile rafIndexNew = new RandomAccessFile(indexFileNew, "rw"); RandomAccessFile rafDataNew = new RandomAccessFile(dataFileNew, "rw")) {
             initNewDB(rafIndexNew, rafDataNew);
             Map<Long, ElementIndex> elementIndices = new LinkedHashMap<>();
@@ -779,6 +805,24 @@ public class DB<T> implements Closeable {
         }
     }
 
+    synchronized private T readElement(RandomAccessFile rafIn, int version, int size) {
+        try {
+            byte[] data = new byte[size];
+            int b = rafIn.read(data);
+            if (b != data.length)
+                throw new Exception("wrong element size. index damaged.");
+            return funcConverter.apply(version, data);
+            // for back compatibility
+            // if (funcGetId.apply(element) != e.getId())
+            //     throw new RuntimeException(String.format("wrong data: need id %d but get %s", e.getId(), funcGetId.apply(element)));
+            // return element;
+        } catch (Exception ex) {
+            // throw new RuntimeException("error", ex);
+            ex.printStackTrace();
+            return null;
+        }
+    }
+
     private T readElement(byte[] dataStorage, int position, int size, int version) {
         try {
             if (size <= DATA_FILE_ELEMENT_HEADER_LENGTH || dataStorage.length < position + size)
@@ -853,15 +897,17 @@ public class DB<T> implements Closeable {
         rafLog.setLength(LOG_FILE_HEADER_LENGTH);
     }
 
-    private void clearTmpFiles() {
+    private void clearTmpFiles(boolean includeOld) {
         if (indexFileNew.exists())
             indexFileNew.delete();
         if (dataFileNew.exists())
             dataFileNew.delete();
-        if (indexFileOld.exists())
-            indexFileOld.delete();
-        if (dataFileOld.exists())
-            dataFileOld.delete();
+        if (includeOld) {
+            if (indexFileOld.exists())
+                indexFileOld.delete();
+            if (dataFileOld.exists())
+                dataFileOld.delete();
+        }
     }
 
     /*
@@ -1128,15 +1174,21 @@ public class DB<T> implements Closeable {
         if (funcIndexGetAdditionalData == null || funcCountAdditionalBytes == null)
             return;
         this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + funcCountAdditionalBytes.apply(version);
+        writeIndex(true);
+    }
+
+    synchronized private void writeIndex(boolean rebuildAdditionalData) throws IOException {
         if (indexFileNew.exists())
             indexFileNew.delete();
         try {
             try (RandomAccessFile rafIndexTmp = new RandomAccessFile(indexFileNew, "rw")) {
                 initNewIndex(rafIndexTmp);
                 for (ElementIndex e : index.getElements().values()) {
-                    T element = readElement(e);
-                    List<Object> additionalData = funcIndexGetAdditionalData.apply(version, element);
-                    e.setAdditionalData(additionalData);
+                    if (rebuildAdditionalData) {
+                        T element = readElement(e);
+                        List<Object> additionalData = funcIndexGetAdditionalData.apply(version, element);
+                        e.setAdditionalData(additionalData);
+                    }
                     writeIndexElement(rafIndexTmp, e.getRealSize(), e.getId(), e.getDate(), e.getAdditionalData());
                 }
             }
