@@ -146,7 +146,7 @@ public class DBTestStringKey {
     @Order(6)
     public void findByDateInRange() {
         List<Value> elements = db.findByDateInRange(db.getMinDate(), db.getMaxDate());
-        Assertions.assertFalse(elements.isEmpty());
+        // Assertions.assertFalse(elements.isEmpty());
         Assertions.assertTrue(elements.size() >= 3);
         elements.forEach(System.out::println);
     }

@@ -1,7 +1,8 @@
 package ru.seits.projects.lineardb;
 
-import java.util.LinkedList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 class Index {
@@ -10,10 +11,10 @@ class Index {
     private long maxId;
     private long maxDate;
 
-    private LinkedList<ElementIndex> elements;
+    private Map<Long, ElementIndex> elements;
     private final int version;
 
-    Index(List<ElementIndex> elements, int version) {
+    Index(Map<Long, ElementIndex> elements, int version) {
         saveAllNew(elements);
         this.version = version;
     }
@@ -50,7 +51,7 @@ class Index {
         this.maxDate = maxDate;
     }
 
-    LinkedList<ElementIndex> getElements() {
+    Map<Long, ElementIndex> getElements() {
         return elements;
     }
 
@@ -59,14 +60,14 @@ class Index {
     }
 
     Optional<ElementIndex> findOne(Long id) {
-        return this.elements.stream().filter(e -> e.getId() == id).findAny();
+        return this.elements.values().stream().filter(e -> e.getId() == id).findAny();
     }
 
     <T> void saveElement(ElementData<T> element, List<Object> additionalData, int size, long position) {
         ElementIndex elementIndex = findOne(element.getId()).orElse(null);
         if (elementIndex == null) {
             if (this.elements.isEmpty() || this.getMinId() > element.getId())
-                this.setMaxId(element.getId());
+                this.setMinId(element.getId());
             if (this.elements.isEmpty() || this.getMinDate() > element.getDate())
                 this.setMinDate(element.getDate());
             if (this.elements.isEmpty() || this.getMaxId() < element.getId())
@@ -80,7 +81,7 @@ class Index {
                 nextPosition = indexElement.getPosition() + indexElement.getSize();
             }
             */
-            this.elements.add(new ElementIndex(0, 0, element.getId(), element.getDate(), additionalData, size, position, version));
+            this.elements.put(element.getId(), new ElementIndex(0, 0, element.getId(), element.getDate(), additionalData, size, position, version));
         } else {
             elementIndex.setSizeInLog(size);
             elementIndex.setPositionInLog(position);
@@ -93,24 +94,24 @@ class Index {
         }
     }
 
-    public void saveAllNew(List<ElementIndex> elements) {
-        this.elements = elements != null ? new LinkedList<>(elements) : new LinkedList<>();
-        setMinId(!this.elements.isEmpty() ? elements.stream().mapToLong(ElementIndex::getId).min().orElse(0) : 0L);
-        setMinDate(!this.elements.isEmpty() ? elements.stream().mapToLong(ElementIndex::getDate).min().orElse(0) : 0L);
-        setMaxId(!this.elements.isEmpty() ? elements.stream().mapToLong(ElementIndex::getId).max().orElse(0) : 0L);
-        setMaxDate(!this.elements.isEmpty() ? elements.stream().mapToLong(ElementIndex::getDate).max().orElse(0) : 0L);
+    void saveAllNew(Map<Long, ElementIndex> elements) {
+        this.elements = elements != null ? new LinkedHashMap<>(elements) : new LinkedHashMap<>();
+        setMinId(!this.elements.isEmpty() ? this.elements.values().stream().mapToLong(ElementIndex::getId).min().orElse(0) : 0L);
+        setMinDate(!this.elements.isEmpty() ? this.elements.values().stream().mapToLong(ElementIndex::getDate).min().orElse(0) : 0L);
+        setMaxId(!this.elements.isEmpty() ? this.elements.values().stream().mapToLong(ElementIndex::getId).max().orElse(0) : 0L);
+        setMaxDate(!this.elements.isEmpty() ? this.elements.values().stream().mapToLong(ElementIndex::getDate).max().orElse(0) : 0L);
     }
 
     void removeElements(List<ElementIndex> elements) {
-        elements.forEach(this.elements::remove);
+        elements.forEach(e -> this.elements.remove(e.getId()));
         if (getMinId() == elements.stream().mapToLong(ElementIndex::getId).min().orElse(0))
-            setMinId(this.elements.stream().mapToLong(ElementIndex::getId).min().orElse(0));
+            setMinId(this.elements.values().stream().mapToLong(ElementIndex::getId).min().orElse(0));
         if (getMinDate() == elements.stream().mapToLong(ElementIndex::getDate).min().orElse(0))
-            setMinDate(this.elements.stream().mapToLong(ElementIndex::getDate).min().orElse(0));
+            setMinDate(this.elements.values().stream().mapToLong(ElementIndex::getDate).min().orElse(0));
         if (getMaxId() == elements.stream().mapToLong(ElementIndex::getId).max().orElse(0))
-            setMaxId(this.elements.stream().mapToLong(ElementIndex::getId).max().orElse(0));
+            setMaxId(this.elements.values().stream().mapToLong(ElementIndex::getId).max().orElse(0));
         if (getMaxDate() == elements.stream().mapToLong(ElementIndex::getDate).max().orElse(0))
-            setMaxDate(this.elements.stream().mapToLong(ElementIndex::getDate).max().orElse(0));
+            setMaxDate(this.elements.values().stream().mapToLong(ElementIndex::getDate).max().orElse(0));
     }
 
 }

@@ -203,7 +203,7 @@ public class DB<T> implements Closeable {
             // long maxId = rafIndex.readLong();
             // long maxDate = rafIndex.readLong();
 
-            List<ElementIndex> sizes = new LinkedList<>();
+            LinkedHashMap<Long, ElementIndex> sizes = new LinkedHashMap<>();
             long positionInDataFile = DATA_FILE_HEADER_LENGTH;
             while (length > rafIndex.getFilePointer()) {
                 // if (lengthData <= positionInDataFile) {
@@ -212,7 +212,7 @@ public class DB<T> implements Closeable {
                 //     break;
                 // }
                 ElementIndex elementIndex = readIndexElement(rafIndex, positionInDataFile, countAdditionalBytesIndex, versionIndex);
-                sizes.add(elementIndex);
+                sizes.put(elementIndex.getId(), elementIndex);
                 positionInDataFile += elementIndex.getSize();
             }
             index = new Index(sizes, versionIndex);
@@ -272,28 +272,28 @@ public class DB<T> implements Closeable {
                 lastInLog.put(elementIndex.getId(), null);
             }
         }
-        List<ElementIndex> elementIndices = new LinkedList<>();
+        Map<Long, ElementIndex> elementIndices = new LinkedHashMap<>();
 
         //for update and remove
-        for (ElementIndex elementIndex : index.getElements()) {
+        for (ElementIndex elementIndex : index.getElements().values()) {
             if (lastInLog.containsKey(elementIndex.getId())) {
                 ElementIndex elementIndexNew = lastInLog.get(elementIndex.getId());
                 if (elementIndexNew == null)
                     continue;
-                elementIndices.add(new ElementIndex(elementIndex, elementIndexNew));
+                elementIndices.put(elementIndex.getId(), new ElementIndex(elementIndex, elementIndexNew));
             } else {
-                elementIndices.add(elementIndex);
+                elementIndices.put(elementIndex.getId(), elementIndex);
             }
         }
 
         //for create
-        Map<Long, ElementIndex> idsInIndex = index.getElements().stream().collect(Collectors.toMap(ElementIndex::getId, id -> id));
+        Map<Long, ElementIndex> idsInIndex = index.getElements();
         lastInLog.values().forEach(i -> {
             if (i == null)
                 return;
             if (idsInIndex.containsKey(i.getId()))
                 return;
-            elementIndices.add(new ElementIndex(null, i));
+            elementIndices.put(i.getId(), new ElementIndex(null, i));
         });
 
         return new Index(elementIndices, getVersion());
@@ -305,8 +305,8 @@ public class DB<T> implements Closeable {
         clearTmpFiles();
         try (RandomAccessFile rafIndexNew = new RandomAccessFile(indexFileNew, "rw"); RandomAccessFile rafDataNew = new RandomAccessFile(dataFileNew, "rw")) {
             initNewDB(rafIndexNew, rafDataNew);
-            LinkedList<ElementIndex> elementIndices = new LinkedList<>();
-            for (ElementIndex elementIndex : index.getElements()) {
+            Map<Long, ElementIndex> elementIndices = new LinkedHashMap<>();
+            for (ElementIndex elementIndex : index.getElements().values()) {
                 try {
                     RandomAccessFile rafIn = elementIndex.getPositionInLog() != null ? rafLog : rafData;
                     long position = elementIndex.getPositionInLog() != null ? elementIndex.getPositionInLog() : elementIndex.getPosition();
@@ -326,7 +326,7 @@ public class DB<T> implements Closeable {
                     }
 
                     writeElementDirect(rafIndexNew, rafDataNew, data.length + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), additionalData, data);
-                    elementIndices.add(elementIndex);
+                    elementIndices.put(elementIndex.getId(), elementIndex);
                 } catch (Exception e) {
                     //if error - not stop operation
                     e.printStackTrace();
@@ -418,9 +418,7 @@ public class DB<T> implements Closeable {
         if (id < index.getMinId() || index.getMaxId() < id)
             return Optional.empty();
 
-        return index.getElements().stream()
-                .filter(e -> e.getId() == id)
-                .findAny()
+        return Optional.ofNullable(index.getElements().get(id))
                 .map(this::readElement);
     }
 
@@ -457,8 +455,10 @@ public class DB<T> implements Closeable {
         if (minId > getMaxId() || maxId < getMinId())
             return Stream.empty();
 
-        return index.getElements().stream()
-                .filter(e -> e.getId() >= minId && e.getId() < maxId);
+        return Stream.iterate(0, n -> n + 1)
+                .limit(maxId - minId)
+                .map(n -> index.getElements().get(minId + n))
+                .filter(Objects::nonNull);
     }
 
     /**
@@ -494,7 +494,7 @@ public class DB<T> implements Closeable {
         if (minDate > getMaxDate() || maxDate < getMinDate())
             return Stream.empty();
 
-        return index.getElements().stream()
+        return index.getElements().values().stream()
                 .filter(e -> e.getDate() >= minDate && e.getDate() < maxDate);
     }
 
@@ -530,7 +530,16 @@ public class DB<T> implements Closeable {
         if (index.getElements().size() < maxPosition)
             maxPosition = index.getElements().size();
 
-        return index.getElements().subList(minPosition, maxPosition).stream();
+        ArrayList<ElementIndex> lst = new ArrayList<>(maxPosition - minPosition + 1);
+        int i = 0;
+        for (ElementIndex e : index.getElements().values()) {
+            if (maxPosition <= i)
+                break;
+            if (minPosition >= i)
+                lst.add(e);
+            i++;
+        }
+        return lst.stream();
     }
 
     /**
@@ -545,12 +554,19 @@ public class DB<T> implements Closeable {
         if (index.getElements().size() < count)
             count = index.getElements().size();
 
-        int firstId = index.getElements().size() - count - 1;
+        int minPosition = index.getElements().size() - count - 1;
+        ArrayList<ElementIndex> lst = new ArrayList<>(count + 1);
+        int i = 0;
+        for (ElementIndex e : index.getElements().values()) {
+            if (minPosition >= i)
+                lst.add(e);
+            i++;
+        }
 
-        return fastRead(index.getElements().subList(firstId, index.getElements().size()), null);
+        return fastRead(lst, null);
     }
 
-    synchronized private List<T> fastRead(List<ElementIndex> elementIndexList, byte[] data) {
+    synchronized private List<T> fastRead(Collection<ElementIndex> elementIndexList, byte[] data) {
         if (elementIndexList.isEmpty())
             return new ArrayList<>();
         List<ElementIndex> elementsInData = elementIndexList.stream()
@@ -629,7 +645,7 @@ public class DB<T> implements Closeable {
             byte[] data = new byte[(int) rafData.length()];
             rafData.seek(0);
             rafData.readFully(data);
-            return fastRead(index.getElements(), data);
+            return fastRead(index.getElements().values(), data);
         } catch (Exception e) {
             throw new RuntimeException("error", e);
         }
@@ -641,9 +657,7 @@ public class DB<T> implements Closeable {
      * @return all element ids
      */
     synchronized public List<Long> getIdsAll() {
-        return index.getElements().stream()
-                .map(ElementIndex::getId)
-                .collect(Collectors.toList());
+        return new ArrayList<>(index.getElements().keySet());
     }
 
     /**
@@ -674,7 +688,7 @@ public class DB<T> implements Closeable {
 
     synchronized private Stream<ElementIndex> findByFilterPrivate(BiPredicate<Integer, List<Object>> filter) {
         Objects.requireNonNull(filter);
-        return index.getElements().stream()
+        return index.getElements().values().stream()
                 .filter(e -> {
                     ArrayList<Object> arrayList = new ArrayList<>((e.getAdditionalData() != null ? e.getAdditionalData().size() : 0) + 2);
                     arrayList.add(e.getId());
@@ -695,7 +709,7 @@ public class DB<T> implements Closeable {
      */
     synchronized public List<IElement> findByFilter(Predicate<IElement> filter) {
         Objects.requireNonNull(filter);
-        return index.getElements().stream()
+        return index.getElements().values().stream()
                 .filter(filter)
                 .collect(Collectors.toList());
     }
@@ -710,7 +724,7 @@ public class DB<T> implements Closeable {
      */
     synchronized public List<T> findByDataFilter(BiPredicate<Integer, T> filter) {
         Objects.requireNonNull(filter);
-        return index.getElements().stream()
+        return index.getElements().values().stream()
                 .map(e -> {
                     T t = readElement(e);
                     return t != null ? Map.entry(e, t) : null;
@@ -732,7 +746,7 @@ public class DB<T> implements Closeable {
      */
     synchronized public List<Long> findIdsByDataFilter(BiPredicate<Integer, T> filter) {
         Objects.requireNonNull(filter);
-        return index.getElements().stream()
+        return index.getElements().values().stream()
                 .map(e -> {
                     T t = readElement(e);
                     return t != null ? Map.entry(e, t) : null;
@@ -801,7 +815,7 @@ public class DB<T> implements Closeable {
         long minDateOld = index.getMinDate();
         long maxIdOld = index.getMaxId();
         long maxDateOld = index.getMaxDate();
-        List<ElementIndex> elementsOldIndex = new ArrayList<>(index.getElements());
+        Map<Long, ElementIndex> elementsOldIndex = new LinkedHashMap<>(index.getElements());
         try {
             return operationSave(dataList);
         } catch (IOException e) {
@@ -814,7 +828,7 @@ public class DB<T> implements Closeable {
             index.setMaxId(maxIdOld);
             index.setMaxDate(maxDateOld);
             index.getElements().clear();
-            index.getElements().addAll(elementsOldIndex);
+            index.getElements().putAll(elementsOldIndex);
             throw e;
         }
     }
@@ -1021,7 +1035,7 @@ public class DB<T> implements Closeable {
     synchronized public int deleteByIdLessThen(long id) throws IOException {
         if (getMinId() > id)
             return 0;
-        List<ElementIndex> elementIndices = index.getElements().stream().filter(e -> e.getId() <= id).collect(Collectors.toList());
+        List<ElementIndex> elementIndices = index.getElements().values().stream().filter(e -> e.getId() <= id).collect(Collectors.toList());
         if (elementIndices.isEmpty())
             return 0;
 
@@ -1037,21 +1051,14 @@ public class DB<T> implements Closeable {
     synchronized public boolean delete(long id) throws IOException {
         if (getMinId() > id || id > getMaxId())
             return false;
-        Integer indexElementId = null;
-        for (int i = 0; i < index.getElements().size(); i++) {
-            ElementIndex elementIndex = index.getElements().get(i);
-            if (elementIndex.getId() == id) {
-                indexElementId = i;
-                break;
-            }
-        }
-        if (indexElementId == null)
+        ElementIndex elementIndex = index.getElements().get(id);
+        if (elementIndex == null)
             return false;
 
         // IndexElement indexElement = index.getElements().get(indexElementId);
         // removeNBytes(rafData, indexElement.getPosition(), indexElement.getPosition() + indexElement.getSize());
         // removeNBytes(rafIndex, INDEX_FILE_HEADER_LENGTH + ((long) indexElementId * indexFileElementLength), INDEX_FILE_HEADER_LENGTH + ((long) indexElementId * indexFileElementLength + indexFileElementLength));
-        operationDelete(List.of(index.getElements().get(indexElementId)));
+        operationDelete(List.of(elementIndex));
         // index.removeElements(indexElementId, 1);
         return true;
     }
@@ -1106,7 +1113,7 @@ public class DB<T> implements Closeable {
      * @return List<IElement>
      */
     public List<IElement> getIndexElements() {
-        return new ArrayList<>(index.getElements());
+        return new ArrayList<>(index.getElements().values());
     }
 
     /**
@@ -1126,7 +1133,7 @@ public class DB<T> implements Closeable {
         try {
             try (RandomAccessFile rafIndexTmp = new RandomAccessFile(indexFileNew, "rw")) {
                 initNewIndex(rafIndexTmp);
-                for (ElementIndex e : index.getElements()) {
+                for (ElementIndex e : index.getElements().values()) {
                     T element = readElement(e);
                     List<Object> additionalData = funcIndexGetAdditionalData.apply(version, element);
                     e.setAdditionalData(additionalData);
@@ -1150,12 +1157,12 @@ public class DB<T> implements Closeable {
 
     public List<T> get(List<IElement> elements) {
         Objects.requireNonNull(elements);
-        return fastRead((List<ElementIndex>) (List) elements, null);
+        return fastRead((List) elements, null);
     }
 
     public void delete(List<IElement> elements) throws IOException {
         Objects.requireNonNull(elements);
-        operationDelete((List<ElementIndex>) (List) elements);
+        operationDelete((List) elements);
     }
 
 }
