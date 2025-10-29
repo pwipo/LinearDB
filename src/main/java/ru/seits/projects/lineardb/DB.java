@@ -1209,12 +1209,20 @@ public class DB<T> implements Closeable {
 
     public List<T> get(List<IElement> elements) {
         Objects.requireNonNull(elements);
-        return fastRead((List) elements, null);
+        return fastRead(
+                elements.stream()
+                        .map(e -> index.getElements().get(e.getId()))
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList()),
+                null);
     }
 
     public void delete(List<IElement> elements) throws IOException {
         Objects.requireNonNull(elements);
-        operationDelete((List) elements);
+        operationDelete(elements.stream()
+                .map(e -> index.getElements().get(e.getId()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList()));
     }
 
 }
