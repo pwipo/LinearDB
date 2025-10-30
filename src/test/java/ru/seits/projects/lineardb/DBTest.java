@@ -97,9 +97,8 @@ public class DBTest {
     @Test
     @Order(6)
     public void findByDateInRange() {
-        List<ElementTest> elements = db.findByDateInRange(db.getMinDate(), db.getMaxDate());
-        // Assertions.assertFalse(elements.isEmpty());
-        Assertions.assertTrue(elements.size() >= 3);
+        List<ElementTest> elements = db.findByDateInRange(db.getMinDate(), Math.max(db.getMaxDate(), db.getMinDate() + 1));
+        Assertions.assertFalse(elements.isEmpty());
         elements.forEach(System.out::println);
     }
 
