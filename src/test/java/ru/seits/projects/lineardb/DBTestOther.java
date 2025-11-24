@@ -18,14 +18,14 @@ public class DBTestOther {
         db = new DB<>(
                 new File("linerdb3"),
                 "db",
-                1,
+                2,
                 ElementTest::fromByte,
                 ElementTest::toByte,
                 ElementTest::getId,
                 ElementTest::setId,
                 ElementTest::getDate,
                 ElementTest::setDate,
-                (v) -> 1,
+                (v) -> v == 1 ? 1 : -1,
                 (v, b) -> List.of(((Byte) b[0]).intValue()),
                 (v, l) -> {
                     byte v1 = ((Integer) l.get(0)).byteValue();
@@ -46,7 +46,7 @@ public class DBTestOther {
     @Test
     @Order(0)
     public void version() {
-        Assertions.assertEquals(1, db.getVersion());
+        Assertions.assertEquals(2, db.getVersion());
     }
 
     @Test

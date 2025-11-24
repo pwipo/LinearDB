@@ -67,7 +67,7 @@ public class DB<T> implements Closeable {
     private RandomAccessFile rafLog;
     private RandomAccessFile rafLock;
     // private final int indexFileElementLength;
-    private int logFileElementHeaderLength;
+    // private int logFileElementHeaderLength;
     private Index index;
 
     public DB(
@@ -115,7 +115,7 @@ public class DB<T> implements Closeable {
         this.funcSetDate = funcSetDate;
         this.countAdditionalBytes = funcCountAdditionalBytes != null ? funcCountAdditionalBytes.apply(version) : 0;
         // this.indexFileElementLength = INDEX_FILE_ELEMENT_LENGTH + countAdditionalBytes;
-        this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + countAdditionalBytes;
+        // this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + countAdditionalBytes;
         this.funcCountAdditionalBytes = funcCountAdditionalBytes;
         this.funcIndexAdditionalDataConverter = funcIndexAdditionalDataConverter;
         this.funcIndexAdditionalDataReverseConverter = funcIndexAdditionalDataReverseConverter;
@@ -204,14 +204,14 @@ public class DB<T> implements Closeable {
             this.rafLog = new RandomAccessFile(logFile, "rw");
         if (rafLock == null)
             this.rafLock = new RandomAccessFile(lockFile, "r");
-        long length = rafIndex.length();
+        long lengthIndex = rafIndex.length();
         long lengthData = rafData.length();
-        if (length > 0 && lengthData > 0) {
+        if (lengthIndex > 0 && lengthData > 0) {
             rafIndex.seek(0);
             int versionIndex = rafIndex.readInt();
             // rafIndex.seek(INDEX_FILE_HEADER_LENGTH);
-            index = new Index(readIndexElements(rafIndex, length, lengthData, versionIndex), versionIndex);
-        } else if (length == 0 && lengthData > 0) {
+            index = new Index(readIndexElements(rafIndex, lengthIndex, lengthData, versionIndex), versionIndex);
+        } else if (lengthIndex == 0 && lengthData > 0) {
             initNewIndex(rafIndex);
             rafData.seek(0);
             int versionData = rafData.readInt();
@@ -229,6 +229,17 @@ public class DB<T> implements Closeable {
         }
     }
 
+    /*
+    private int readFileVer(RandomAccessFile raf) throws IOException {
+        long curPosition = raf.getFilePointer();
+        int fileVerData = raf.readInt();
+        int fileVerCur = ((fileVerData & 0xff) == 255 && (fileVerData >> 16 & 0xff) == 255) ? fileVerData >> 8 & 0xff : 1;
+        if (fileVerCur == 1)
+            raf.seek(curPosition);
+        return fileVerCur;
+    }
+    */
+
     synchronized private LinkedHashMap<Long, ElementIndex> readIndexElements(RandomAccessFile rafIndex, long length, long lengthData, int versionIndex) throws IOException {
         int countAdditionalBytesIndex = funcCountAdditionalBytes != null ? funcCountAdditionalBytes.apply(versionIndex) : 0;
         // long minId = rafIndex.readLong();
@@ -238,7 +249,7 @@ public class DB<T> implements Closeable {
 
         LinkedHashMap<Long, ElementIndex> elements = new LinkedHashMap<>();
         long positionInDataFile = DATA_FILE_HEADER_LENGTH;
-        while (length >= (rafIndex.getFilePointer() + INDEX_FILE_ELEMENT_LENGTH + countAdditionalBytesIndex) && lengthData > positionInDataFile) {
+        while (length >= (rafIndex.getFilePointer() + INDEX_FILE_ELEMENT_LENGTH + Math.max(countAdditionalBytesIndex, 0)) && lengthData > positionInDataFile) {
             // if (lengthData <= positionInDataFile) {
             //     rafIndex.setLength(rafIndex.getFilePointer());
             //     // rafData.setLength(positionInDataFile);
@@ -280,6 +291,8 @@ public class DB<T> implements Closeable {
         long id = raf.readLong();
         long date = raf.readLong();
         List<Object> additionalData = null;
+        if (countAdditionalBytesInIndex == -1)
+            countAdditionalBytesInIndex = raf.readInt();
         if (countAdditionalBytesInIndex > 0) {
             byte[] additionalBytes = new byte[countAdditionalBytesInIndex];
             raf.readFully(additionalBytes);
@@ -318,7 +331,8 @@ public class DB<T> implements Closeable {
                 }
                 lastInLog.put(elementIndex.getId(), elementIndex);
             } else if (LOG_ELEMENT_TYPE_DELETE == type) {
-                elementIndex = readIndexElement(rafLog, 0, 0, ver);
+                elementIndex = readIndexElement(rafLog, 0, countAdditionalBytesIndex, ver);
+                elementIndex.setAdditionalData(null);
                 lastInLog.put(elementIndex.getId(), null);
             }
         }
@@ -421,7 +435,7 @@ public class DB<T> implements Closeable {
                         writeDataDirect(rafDataNew, data);
                     }
 
-                    writeIndexDirect(rafIndexNew, dataSize + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), additionalData, countAdditionalBytes);
+                    writeIndexDirect(rafIndexNew, dataSize + DATA_FILE_ELEMENT_HEADER_LENGTH, elementIndex.getId(), elementIndex.getDate(), additionalDataToBytes(additionalData));
                     elementIndices.put(elementIndex.getId(), elementIndex);
                 } catch (Exception e) {
                     //if error - not stop operation
@@ -1009,6 +1023,8 @@ public class DB<T> implements Closeable {
     private Index initNewIndex(RandomAccessFile rafIndex) throws IOException {
         rafIndex.seek(0);
         rafIndex.writeInt(getVersion());
+        // int fileVerData = (255 << 16) + (FILE_VER << 8) + 255;
+        // rafIndex.writeInt(fileVerData);
         rafIndex.setLength(INDEX_FILE_HEADER_LENGTH);
         return new Index(null, getVersion());
     }
@@ -1016,6 +1032,8 @@ public class DB<T> implements Closeable {
     private void initLog(RandomAccessFile rafLog) throws IOException {
         rafLog.seek(0);
         rafLog.writeInt(getVersion());
+        // int fileVerData = (255 << 16) + (FILE_VER << 8) + 255;
+        // rafIndex.writeInt(fileVerData);
         rafLog.setLength(LOG_FILE_HEADER_LENGTH);
     }
 
@@ -1132,10 +1150,11 @@ public class DB<T> implements Closeable {
                 List<Object> additionalData = null;
                 if (funcIndexGetAdditionalData != null)
                     additionalData = funcIndexGetAdditionalData.apply(getVersion(), data);
-                writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), additionalData, bytes, countAdditionalBytes);
+                byte[] additional = additionalDataToBytes(additionalData);
+                writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), bytes, additional);
 
                 elements.add(elementData.getData());
-                position += logFileElementHeaderLength;
+                position += LOG_FILE_ELEMENT_HEADER_LENGTH + (additional != null ? additional.length : 0);
                 index.saveElement(elementData, additionalData, elementSize, position);
                 position += elementSize;
             }
@@ -1152,7 +1171,7 @@ public class DB<T> implements Closeable {
             long length = rafLog.length();
             rafLog.seek(length);
             for (ElementIndex elementIndex : elementIndices)
-                writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, elementIndex.getId(), System.currentTimeMillis(), null, null, 0);
+                writeElementToLog(dos, LOG_ELEMENT_TYPE_DELETE, 0, elementIndex.getId(), System.currentTimeMillis(), null, null);
             dos.flush();
             byte[] bytes = baos.toByteArray();
             rafLog.write(bytes);
@@ -1161,16 +1180,22 @@ public class DB<T> implements Closeable {
         index.removeElements(elementIndices);
     }
 
-    synchronized private void writeIndexDirect(DataOutput rafIndex, int elementSize, long id, long date, List<Object> additionalData, int countAdditionalBytes) throws IOException {
-        //check consistent
+    private byte[] additionalDataToBytes(List<Object> additionalData) {
         byte[] additional = null;
         if (additionalData != null && funcIndexAdditionalDataReverseConverter != null)
             additional = funcIndexAdditionalDataReverseConverter.apply(getVersion(), additionalData);
         if (additional == null && countAdditionalBytes > 0)
             additional = new byte[countAdditionalBytes];
+        return additional;
+    }
+
+    synchronized private void writeIndexDirect(DataOutput rafIndex, int elementSize, long id, long date, byte[] additional) throws IOException {
+        //check consistent
         rafIndex.writeInt(elementSize);
         rafIndex.writeLong(id);
         rafIndex.writeLong(date);
+        if (countAdditionalBytes == -1)
+            rafIndex.writeInt(additional != null ? additional.length : 0);
         if (additional != null)
             rafIndex.write(additional);
     }
@@ -1180,12 +1205,12 @@ public class DB<T> implements Closeable {
         rafData.write(bytes);
     }
 
-    synchronized private void writeElementToLog(DataOutputStream dos, byte type, int elementSize, long id, long date, List<Object> additionalData, byte[] bytes, int countAdditionalBytes) throws IOException {
+    synchronized private void writeElementToLog(DataOutputStream dos, byte type, int elementSize, long id, long date, byte[] bytes, byte[] additional) throws IOException {
         //check consistent
         if (bytes != null && funcConverter.apply(getVersion(), bytes) == null)
             throw new IllegalArgumentException("wrong data");
         dos.writeByte(type);
-        writeIndexDirect(dos, elementSize, id, date, additionalData, countAdditionalBytes);
+        writeIndexDirect(dos, elementSize, id, date, additional);
         if (bytes != null) {
             dos.writeInt(bytes.length);
             dos.write(bytes);
@@ -1295,7 +1320,7 @@ public class DB<T> implements Closeable {
         open();
         if (funcIndexGetAdditionalData == null || funcCountAdditionalBytes == null)
             return;
-        this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + funcCountAdditionalBytes.apply(getVersion());
+        // this.logFileElementHeaderLength = LOG_FILE_ELEMENT_HEADER_LENGTH + funcCountAdditionalBytes.apply(getVersion());
         writeIndex(true);
     }
 
@@ -1311,7 +1336,7 @@ public class DB<T> implements Closeable {
                         List<Object> additionalData = funcIndexGetAdditionalData.apply(getVersion(), element);
                         e.setAdditionalData(additionalData);
                     }
-                    writeIndexDirect(rafIndexTmp, e.getRealSize(), e.getId(), e.getDate(), e.getAdditionalData(), countAdditionalBytes);
+                    writeIndexDirect(rafIndexTmp, e.getRealSize(), e.getId(), e.getDate(), additionalDataToBytes(e.getAdditionalData()));
                 }
             }
             if (rafIndex != null) {
