@@ -1154,7 +1154,7 @@ public class DB<T> implements Closeable {
                 writeElementToLog(dos, LOG_ELEMENT_TYPE_SAVE, elementSize, elementData.getId(), elementData.getDate(), bytes, additional);
 
                 elements.add(elementData.getData());
-                position += LOG_FILE_ELEMENT_HEADER_LENGTH + (additional != null ? additional.length : 0);
+                position += LOG_FILE_ELEMENT_HEADER_LENGTH + (countAdditionalBytes == -1 ? 4 : 0) + (additional != null ? additional.length : 0);
                 index.saveElement(elementData, additionalData, elementSize, position);
                 position += elementSize;
             }
