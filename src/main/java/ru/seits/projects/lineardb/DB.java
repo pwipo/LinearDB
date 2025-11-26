@@ -1375,4 +1375,12 @@ public class DB<T> implements Closeable {
                 .collect(Collectors.toList()));
     }
 
+    public List<IElement> getElements(List<Long> ids) {
+        Objects.requireNonNull(ids);
+        return ids.stream()
+                .map(n -> index.getElements().get(n))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
 }
