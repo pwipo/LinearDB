@@ -1375,7 +1375,7 @@ public class DB<T> implements Closeable {
                 .collect(Collectors.toList()));
     }
 
-    public List<IElement> getIndexElements(List<Long> ids) {
+    public List<IElement> findIndexElements(List<Long> ids) {
         Objects.requireNonNull(ids);
         return ids.stream()
                 .map(n -> index.getElements().get(n))
